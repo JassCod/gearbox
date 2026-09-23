@@ -30,6 +30,10 @@ Everyday touches:
 - Fuel fills and pre-start checks update the vehicle's odometer.
 - A vehicle in the workshop goes back to *active* once its last open job is completed.
 
+## Live site
+
+https://jasscod.github.io/gearbox/ – redeployed automatically by `.github/workflows/deploy.yml` on every push to `main`.
+
 ## Getting started
 
 ```bash

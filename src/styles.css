@@ -1076,13 +1076,15 @@ a.driver-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(
 .hud-card .auth-msg.tone-good { background: rgba(74,222,128,.14); color: #bbf7d0; }
 .hud-card .pw-toggle:hover { background: rgba(255,255,255,.08); }
 .stage-foot { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; font-size: .75rem; color: rgba(255,255,255,.55); z-index: 2; pointer-events: none; }
+.stage-foot small { display: block; margin-top: 3px; font-size: .66rem; color: rgba(255,255,255,.38); }
+.stage-foot a { color: inherit; text-decoration: underline; pointer-events: auto; }
 @media (max-width: 860px) {
   .stage-vignette { background: linear-gradient(180deg, rgba(8,7,18,.45) 0%, transparent 30%, rgba(8,7,18,.35) 55%, rgba(8,7,18,.85) 100%); }
   .stage-brand { gap: 10px; }
   .stage-tagline { font-size: 1.7rem; }
   .stage-tags { display: none; }
   .auth-stage { position: fixed; overflow-y: auto; }
-  .stage-card-wrap { position: relative; min-height: 100%; align-items: flex-end; justify-content: center; padding: 200px 16px 44px; }
+  .stage-card-wrap { position: relative; min-height: 100%; align-items: flex-end; justify-content: center; padding: 200px 16px 72px; }
   .hud-card { transform: none; padding: 24px 22px; }
 }
 @media (max-height: 640px) and (min-width: 861px) { .stage-tags { display: none; } }

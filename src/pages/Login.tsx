@@ -69,7 +69,10 @@ function AuthShell({ children, title, subtitle }: { children: React.ReactNode; t
           {children}
         </div>
       </main>
-      <footer className="stage-foot">Protected by role-based access · © {new Date().getFullYear()} Torqline</footer>
+      <footer className="stage-foot">
+        Protected by role-based access · © {new Date().getFullYear()} Torqline
+        <small>3D car: “Car Concept” by Eric Chadwick, © Darmstadt Graphics Group, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a> (modified)</small>
+      </footer>
     </div>
   );
 }

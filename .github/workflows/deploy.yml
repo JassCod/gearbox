@@ -22,12 +22,22 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Check Supabase settings
+        env:
+          URL_SET: ${{ (vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL) != '' }}
+          KEY_SET: ${{ (vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY) != '' }}
+        run: |
+          echo "VITE_SUPABASE_URL provided: $URL_SET"
+          echo "VITE_SUPABASE_ANON_KEY provided: $KEY_SET"
+          if [ "$URL_SET" != "$KEY_SET" ]; then
+            echo "::warning::Only one of VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY is set – the site will build in local mode. Check the names under Settings → Secrets and variables → Actions."
+          fi
       - run: npm run build
         env:
-          # Set these under Settings → Secrets and variables → Actions → Variables to switch on
+          # Set these under Settings → Secrets and variables → Actions (as Variables or Secrets) to switch on
           # logins and the shared database. Without them the site runs in local mode.
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
       - name: Publish dist/ to the gh-pages branch
         uses: peaceiris/actions-gh-pages@v4
         with:

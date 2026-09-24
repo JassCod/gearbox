@@ -11,7 +11,7 @@ Torqline uses [Supabase](https://supabase.com), which provides a hosted Postgres
 ## 2. Create the tables and security rules
 
 1. In your project, open **SQL Editor** → **New query**.
-2. Paste in the whole of [`schema.sql`](./schema.sql) and click **Run**.
+2. Open [`schema.sql`](https://raw.githubusercontent.com/JassCod/gearbox/main/supabase/schema.sql), select all of its text (Ctrl+A), copy it (Ctrl+C), paste it into the editor, and click **Run**. Paste the file's *contents*, not its name.
 
 This creates the tables, the role-based security rules, the activity log and live updates. It's safe to run again later.
 
@@ -28,13 +28,10 @@ These addresses are where the "confirm your email" and "reset password" links se
 
 ## 4. Give the website your project's keys
 
-1. In Supabase, open **Project Settings** → **API** and copy the **Project URL** and the **anon public** key.
-2. In GitHub, open the repository → **Settings** → **Secrets and variables** → **Actions** → **Variables** tab → **New repository variable**, and add:
-   - `VITE_SUPABASE_URL` = the Project URL
-   - `VITE_SUPABASE_ANON_KEY` = the anon public key
-3. Go to **Actions** → **Deploy to GitHub Pages** → **Run workflow** to rebuild the site.
+1. In Supabase, open **Project Settings** → **API Keys** and copy the **Project URL** and the **publishable** key (`sb_publishable_…`). The legacy anon key also works.
+2. Put them in [`.env.production`](../.env.production) in the repository and push to `main`. The site rebuilds automatically.
 
-The anon key is designed to be public. What each person can see and change is decided by the security rules from step 2, which run inside the database.
+These two values are designed to be public. What each person can see and change is decided by the security rules from step 2, which run inside the database. **Never** put the secret key (`sb_secret_…`) or the service_role key in the repository or the app.
 
 ## 5. Become the admin
 

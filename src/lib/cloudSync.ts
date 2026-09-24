@@ -1,12 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AppData, CollectionKey, Settings } from '../types';
 
-export const COLLECTIONS: CollectionKey[] = ['vehicles', 'schedules', 'workOrders', 'defects', 'checks', 'parts', 'drivers', 'fuel'];
+export const COLLECTIONS: CollectionKey[] = ['vehicles', 'schedules', 'workOrders', 'defects', 'checks', 'parts', 'drivers', 'fuel',
+  'ncrs', 'audits', 'attachments', 'reminders', 'notes', 'activity'];
 
 type Row = { collection: CollectionKey; id: string; data: { id: string } };
 
 export function emptyData(settings: Settings): AppData {
-  return { vehicles: [], schedules: [], workOrders: [], defects: [], checks: [], parts: [], drivers: [], fuel: [], settings };
+  return {
+    vehicles: [], schedules: [], workOrders: [], defects: [], checks: [], parts: [], drivers: [], fuel: [],
+    ncrs: [], audits: [], attachments: [], reminders: [], notes: [], activity: [], settings,
+  };
 }
 
 /** Load the whole shared workspace. Returns settings = null when none have been saved yet. */

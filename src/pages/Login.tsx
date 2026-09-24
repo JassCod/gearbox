@@ -1,24 +1,138 @@
-import { useState } from 'react';
-import { Gauge, LogOut, RefreshCw } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Eye, EyeOff, Gauge, LogOut, RefreshCw, ShieldCheck, Sparkles, Wrench } from 'lucide-react';
 import { appUrl, supabase } from '../lib/supabase';
 import { useAuth } from '../auth';
 
 type Mode = 'signin' | 'signup' | 'forgot';
 
-function AuthShell({ children, title, subtitle }: { children: React.ReactNode; title: string; subtitle?: string }) {
+const WORDS = ['on the road.', 'audit-ready.', 'compliant.', 'safe.', 'under control.'];
+
+function Typewriter() {
+  const [i, setI] = useState(0);
+  const [len, setLen] = useState(0);
+  const [deleting, setDeleting] = useState(false);
+  useEffect(() => {
+    const word = WORDS[i % WORDS.length];
+    const t = setTimeout(() => {
+      if (!deleting && len < word.length) setLen(len + 1);
+      else if (!deleting) setDeleting(true);
+      else if (len > 0) setLen(len - 1);
+      else { setDeleting(false); setI(i + 1); }
+    }, !deleting && len === word.length ? 1600 : deleting ? 40 : 85);
+    return () => clearTimeout(t);
+  }, [i, len, deleting]);
+  return <span className="typewriter">{WORDS[i % WORDS.length].slice(0, len)}<span className="caret" /></span>;
+}
+
+function Gear({ size, teeth, className }: { size: number; teeth: number; className: string }) {
+  const r = size / 2; const inner = r * 0.78; const hole = r * 0.3;
+  const pts: string[] = [];
+  for (let t = 0; t < teeth * 2; t++) {
+    const a = (t / (teeth * 2)) * Math.PI * 2;
+    const rad = t % 2 === 0 ? r : inner;
+    const a2 = a + Math.PI / teeth;
+    pts.push(`${r + rad * Math.cos(a)},${r + rad * Math.sin(a)}`, `${r + rad * Math.cos(a2)},${r + rad * Math.sin(a2)}`);
+  }
   return (
-    <div className="auth-page">
-      <div className="auth-card">
-        <div className="brand auth-brand">
-          <span className="brand-mark"><Gauge size={20} /></span>
-          <div><strong>Torqline</strong><small>Fleet maintenance</small></div>
-        </div>
-        <h1>{title}</h1>
-        {subtitle && <p className="muted">{subtitle}</p>}
-        {children}
+    <svg className={`gear ${className}`} width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
+      <polygon points={pts.join(' ')} />
+      <circle cx={r} cy={r} r={hole} className="gear-hole" />
+    </svg>
+  );
+}
+
+function TruckSvg({ className }: { className: string }) {
+  return (
+    <svg className={`truck ${className}`} viewBox="0 0 120 50" aria-hidden>
+      <rect x="2" y="8" width="72" height="30" rx="3" className="t-box" />
+      <path d="M76 16 h22 l14 12 v10 h-36 z" className="t-cab" />
+      <rect x="84" y="19" width="12" height="8" rx="1.5" className="t-window" />
+      <circle cx="20" cy="41" r="7" className="t-wheel" /><circle cx="20" cy="41" r="2.5" className="t-hub" />
+      <circle cx="56" cy="41" r="7" className="t-wheel" /><circle cx="56" cy="41" r="2.5" className="t-hub" />
+      <circle cx="98" cy="41" r="7" className="t-wheel" /><circle cx="98" cy="41" r="2.5" className="t-hub" />
+      <rect x="108" y="30" width="5" height="3" rx="1" className="t-light" />
+      <text x="10" y="28" className="t-label">TORQLINE</text>
+    </svg>
+  );
+}
+
+function FleetScene() {
+  return (
+    <div className="scene" aria-hidden>
+      <div className="stars" />
+      <div className="sun" />
+      <svg className="skyline" viewBox="0 0 600 120" preserveAspectRatio="none">
+        <path d="M0 120 V70 h30 v-20 h20 v30 h25 v-45 h18 v45 h22 v-25 h30 v35 h20 v-60 h12 v-10 h8 v10 h12 v60 h25 v-30 h28 v40 h20 v-55 h26 v55 h18 v-20 h30 v25 h24 v-40 h22 v40 h30 v-28 h20 v38 h26 v-18 h24 v18 h20 V120 z" />
+      </svg>
+      <div className="gears">
+        <Gear size={120} teeth={12} className="g1" />
+        <Gear size={78} teeth={9} className="g2" />
+        <Gear size={54} teeth={8} className="g3" />
+      </div>
+      <div className="float-card fc1"><span className="fc-dot good" /> Fleet health <b>96%</b></div>
+      <div className="float-card fc2"><span className="fc-dot violet" /> NCR-104 <b>closed ✓</b></div>
+      <div className="float-card fc3"><span className="fc-dot warn" /> TRK-102 service <b>in 3 days</b></div>
+      <div className="road">
+        <div className="road-dashes" />
+        <TruckSvg className="tr1" />
+        <TruckSvg className="tr2" />
       </div>
     </div>
   );
+}
+
+function AuthShell({ children, title, subtitle }: { children: React.ReactNode; title: string; subtitle?: string }) {
+  return (
+    <div className="auth-split">
+      <section className="auth-visual">
+        <FleetScene />
+        <div className="auth-pitch">
+          <div className="brand auth-brand light">
+            <span className="brand-mark"><Gauge size={20} /></span>
+            <div><strong>Torqline</strong><small>Fleet maintenance & compliance</small></div>
+          </div>
+          <h2>Keep every wheel<br /><Typewriter /></h2>
+          <ul className="auth-features">
+            <li><Wrench size={16} /> Work orders, services & parts in one flow</li>
+            <li><ShieldCheck size={16} /> NCRs, audits & a live compliance score</li>
+            <li><Sparkles size={16} /> Real-time for the whole team</li>
+          </ul>
+        </div>
+      </section>
+      <section className="auth-panel">
+        <div className="auth-card glow">
+          <div className="brand auth-brand only-small">
+            <span className="brand-mark"><Gauge size={20} /></span>
+            <div><strong>Torqline</strong><small>Fleet maintenance</small></div>
+          </div>
+          <h1>{title}</h1>
+          {subtitle && <p className="muted">{subtitle}</p>}
+          {children}
+        </div>
+        <p className="auth-foot small muted">Protected by role-based access · © {new Date().getFullYear()} Torqline</p>
+      </section>
+    </div>
+  );
+}
+
+function PasswordInput({ id, value, onChange, autoComplete }: { id: string; value: string; onChange: (v: string) => void; autoComplete: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="pw-wrap">
+      <input id={id} className="input" type={show ? 'text' : 'password'} required minLength={8} autoComplete={autoComplete} value={value} onChange={(e) => onChange(e.target.value)} />
+      <button type="button" className="pw-toggle" onClick={() => setShow(!show)} aria-label={show ? 'Hide password' : 'Show password'}>{show ? <EyeOff size={16} /> : <Eye size={16} />}</button>
+    </div>
+  );
+}
+
+function strength(pw: string) {
+  let s = 0;
+  if (pw.length >= 8) s++;
+  if (pw.length >= 12) s++;
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) s++;
+  if (/\d/.test(pw)) s++;
+  if (/[^A-Za-z0-9]/.test(pw)) s++;
+  return Math.min(4, s);
 }
 
 export function Login() {
@@ -80,10 +194,12 @@ export function Login() {
           <input className="input" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         </label>
         {mode !== 'forgot' && (
-          <label className="field"><span>Password</span>
-            <input className="input" type="password" required minLength={8} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-              value={password} onChange={(e) => setPassword(e.target.value)} />
-          </label>
+          <div className="field"><label htmlFor="pw">Password</label>
+            <PasswordInput id="pw" value={password} onChange={setPassword} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} />
+            {mode === 'signup' && password && (
+              <span className={`pw-meter s${strength(password)}`}><i /><i /><i /><i /><em>{['Too weak', 'Weak', 'Okay', 'Strong', 'Excellent'][strength(password)]}</em></span>
+            )}
+          </div>
         )}
         {error && <p className="auth-msg tone-bad">{error}</p>}
         {notice && <p className="auth-msg tone-good">{notice}</p>}
@@ -116,12 +232,12 @@ export function SetNewPassword() {
   return (
     <AuthShell title="Choose a new password">
       <form className="auth-form" onSubmit={submit}>
-        <label className="field"><span>New password</span>
-          <input className="input" type="password" required minLength={8} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
-        </label>
-        <label className="field"><span>Confirm password</span>
-          <input className="input" type="password" required minLength={8} autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
-        </label>
+        <div className="field"><label htmlFor="pw-new">New password</label>
+          <PasswordInput id="pw-new" value={password} onChange={setPassword} autoComplete="new-password" />
+        </div>
+        <div className="field"><label htmlFor="pw-confirm">Confirm password</label>
+          <PasswordInput id="pw-confirm" value={confirm} onChange={setConfirm} autoComplete="new-password" />
+        </div>
         {error && <p className="auth-msg tone-bad">{error}</p>}
         <button className="btn btn-primary btn-block" disabled={busy}>{busy ? 'Saving…' : 'Save password'}</button>
       </form>

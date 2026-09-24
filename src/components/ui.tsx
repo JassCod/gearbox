@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import type { Health } from '../lib/utils';
 import { humanize } from '../lib/utils';
@@ -42,7 +42,7 @@ export function StatCard({ label, value, hint, tone = 'neutral', icon, onClick }
         <span className="stat-label">{label}</span>
         {icon && <span className="stat-icon">{icon}</span>}
       </div>
-      <div className="stat-value">{value}</div>
+      <div className="stat-value">{typeof value === 'number' ? <CountUp value={value} /> : value}</div>
       {hint && <div className="stat-hint">{hint}</div>}
     </Tag>
   );
@@ -53,9 +53,10 @@ const TONES: Record<string, string> = {
   amber: 'warn', 'due-soon': 'warn', 'in-workshop': 'warn', 'in-progress': 'info', 'waiting-parts': 'warn',
   medium: 'info', major: 'warn', minor: 'neutral', open: 'info', 'in-workorder': 'info',
   red: 'bad', overdue: 'bad', 'off-road': 'bad', critical: 'bad', high: 'warn', failed: 'bad',
+  investigating: 'violet', action: 'warn', verification: 'info', closed: 'good', planned: 'neutral',
 };
 
-const LABELS: Record<string, string> = { 'in-workorder': 'In work order', ok: 'On track' };
+const LABELS: Record<string, string> = { 'in-workorder': 'In work order', ok: 'On track', action: 'Corrective action', open: 'Open' };
 
 export function Badge({ value, label }: { value: string; label?: string }) {
   return <span className={`badge tone-${TONES[value] ?? 'neutral'}`}>{label ?? LABELS[value] ?? humanize(value)}</span>;
@@ -135,4 +136,21 @@ export function Select<T extends string>({ value, onChange, options, label }: {
 
 export function confirmAction(message: string) {
   return window.confirm(message);
+}
+
+/** Numbers roll up to their value on first render – a small touch that makes dashboards feel alive. */
+export function CountUp({ value, duration = 700 }: { value: number; duration?: number }) {
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { setShown(value); return; }
+    let raf = 0; const start = performance.now();
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - start) / duration);
+      setShown(Math.round(value * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value, duration]);
+  return <>{shown.toLocaleString()}</>;
 }

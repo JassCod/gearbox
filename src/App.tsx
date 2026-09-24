@@ -4,15 +4,19 @@ import { Layout } from './components/Layout';
 import { StoreProvider, useStore } from './store';
 import { useAuth, usePermissions } from './auth';
 import Dashboard from './pages/Dashboard';
-import Vehicles from './pages/Vehicles';
+import Vehicles, { NewVehicle } from './pages/Vehicles';
 import VehicleDetail from './pages/VehicleDetail';
-import Maintenance from './pages/Maintenance';
-import WorkOrders from './pages/WorkOrders';
-import Checks from './pages/Checks';
-import Defects from './pages/Defects';
-import Parts from './pages/Parts';
-import Drivers from './pages/Drivers';
-import FuelLog from './pages/FuelLog';
+import Maintenance, { NewSchedule, ScheduleDetail } from './pages/Maintenance';
+import WorkOrders, { NewWorkOrder, WorkOrderDetail } from './pages/WorkOrders';
+import Checks, { CheckDetail, NewCheck } from './pages/Checks';
+import Defects, { DefectDetail, NewDefect } from './pages/Defects';
+import Parts, { NewPart, PartDetail } from './pages/Parts';
+import Drivers, { DriverDetail, NewDriver } from './pages/Drivers';
+import FuelLog, { FuelDetail, NewFuel } from './pages/FuelLog';
+import Ncrs, { NcrDetail, NewNcr } from './pages/Ncrs';
+import Audits, { AuditDetail, NewAudit } from './pages/Audits';
+import Compliance from './pages/Compliance';
+import Reminders from './pages/Reminders';
 import Calendar from './pages/Calendar';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
@@ -68,14 +72,37 @@ function Workspace() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/vehicles" element={<Vehicles />} />
+        <Route path="/vehicles/new" element={<NewVehicle />} />
         <Route path="/vehicles/:id" element={<VehicleDetail />} />
         <Route path="/maintenance" element={<Maintenance />} />
+        <Route path="/maintenance/new" element={<NewSchedule />} />
+        <Route path="/maintenance/:id" element={<ScheduleDetail />} />
         <Route path="/work-orders" element={<WorkOrders />} />
+        <Route path="/work-orders/new" element={<NewWorkOrder />} />
+        <Route path="/work-orders/:id" element={<WorkOrderDetail />} />
         <Route path="/checks" element={<Checks />} />
+        <Route path="/checks/new" element={<NewCheck />} />
+        <Route path="/checks/:id" element={<CheckDetail />} />
         <Route path="/defects" element={<Defects />} />
+        <Route path="/defects/new" element={<NewDefect />} />
+        <Route path="/defects/:id" element={<DefectDetail />} />
         <Route path="/parts" element={<Parts />} />
+        <Route path="/parts/new" element={<NewPart />} />
+        <Route path="/parts/:id" element={<PartDetail />} />
         <Route path="/drivers" element={<Drivers />} />
+        <Route path="/drivers/new" element={<NewDriver />} />
+        <Route path="/drivers/:id" element={<DriverDetail />} />
         <Route path="/fuel" element={<FuelLog />} />
+        <Route path="/fuel/new" element={<NewFuel />} />
+        <Route path="/fuel/:id" element={<FuelDetail />} />
+        <Route path="/compliance" element={<Compliance />} />
+        <Route path="/ncr" element={<Ncrs />} />
+        <Route path="/ncr/new" element={<NewNcr />} />
+        <Route path="/ncr/:id" element={<NcrDetail />} />
+        <Route path="/audits" element={<Audits />} />
+        <Route path="/audits/new" element={<NewAudit />} />
+        <Route path="/audits/:id" element={<AuditDetail />} />
+        <Route path="/reminders" element={<Reminders />} />
         <Route path="/calendar" element={<Calendar />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<Settings />} />

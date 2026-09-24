@@ -1,25 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Check, ClipboardCheck, Plus, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Check, ClipboardCheck, LayoutGrid, PenLine, Plus, X } from 'lucide-react';
 import { useStore } from '../store';
 import { usePermissions } from '../auth';
-import type { CheckItem, PrestartCheck } from '../types';
-import { Badge, Card, Empty, Field, Modal, PageHeader, Select } from '../components/ui';
+import type { CheckItem } from '../types';
+import { Badge, Card, Empty, Field, PageHeader, Select } from '../components/ui';
+import { ItemPage } from '../components/ItemPage';
+import { celebrate } from '../components/celebrate';
 import { byId, fmtDate, fmtNum, todayISO } from '../lib/utils';
 
 export default function Checks() {
   const { data } = useStore();
-  const [params, setParams] = useSearchParams();
-  const [creating, setCreating] = useState(false);
-  const [viewing, setViewing] = useState<PrestartCheck | null>(null);
+  const navigate = useNavigate();
   const [result, setResult] = useState<'all' | 'passed' | 'failed'>('all');
   const [vehicle, setVehicle] = useState('all');
   const perm = usePermissions();
-
-  useEffect(() => {
-    if (params.get('new') && perm.canWrite('checks')) setCreating(true);
-  }, [params, perm]);
-  const closeNew = () => { setCreating(false); if (params.has('new')) setParams({}); };
 
   const rows = useMemo(() => data.checks
     .filter((c) => (result === 'all' || (result === 'passed') === c.passed) && (vehicle === 'all' || c.vehicleId === vehicle))
@@ -27,27 +22,27 @@ export default function Checks() {
 
   const today = data.checks.filter((c) => c.date === todayISO());
   const notChecked = data.vehicles.filter((v) => v.status === 'active' && !today.some((c) => c.vehicleId === v.id));
+  const coverage = data.vehicles.filter((v) => v.status === 'active').length;
 
   return (
     <>
       <PageHeader title="Pre-start checks" subtitle="Drivers complete a quick walk-around before each shift. Failed items become defects automatically."
-        actions={perm.canWrite('checks') && <button className="btn btn-primary" disabled={!data.vehicles.length || !data.drivers.length} onClick={() => setCreating(true)}><Plus size={16} /> New pre-start</button>} />
-
+        actions={perm.canWrite('checks') && <Link className="btn btn-primary" to="/checks/new"><Plus size={16} /> New pre-start</Link>} />
       <div className="grid-2">
-        <Card title={`Today · ${today.length} submitted`}>
+        <Card title={`Today · ${today.length} of ${coverage} active assets checked`}>
+          <div className="big-progress"><div style={{ width: `${coverage ? (today.length / coverage) * 100 : 0}%` }} /></div>
           <div className="chips">
-            {today.map((c) => <span key={c.id} className={`chip tone-${c.passed ? 'good' : 'bad'}`}>{byId(data.vehicles, c.vehicleId)?.rego}</span>)}
+            {today.map((c) => <Link to={`/checks/${c.id}`} key={c.id} className={`chip tone-${c.passed ? 'good' : 'bad'}`}>{byId(data.vehicles, c.vehicleId)?.rego} {c.passed ? '✓' : '✕'}</Link>)}
             {today.length === 0 && <span className="muted">No checks yet today.</span>}
           </div>
         </Card>
-        <Card title={`Active assets not yet checked · ${notChecked.length}`}>
+        <Card title={`Still to check · ${notChecked.length}`}>
           <div className="chips">
-            {notChecked.map((v) => <span key={v.id} className="chip">{v.rego}</span>)}
-            {notChecked.length === 0 && <span className="muted">Every active asset has been checked today.</span>}
+            {notChecked.map((v) => <Link key={v.id} to={`/checks/new?vehicle=${v.id}`} className="chip">{v.rego}</Link>)}
+            {notChecked.length === 0 && <span className="muted">Every active asset has been checked today. 🎉</span>}
           </div>
         </Card>
       </div>
-
       <Card>
         <div className="toolbar">
           <Select label="Vehicle" value={vehicle} onChange={setVehicle} options={[{ value: 'all', label: 'All vehicles' }, ...data.vehicles.map((v) => ({ value: v.id, label: v.rego }))]} />
@@ -61,7 +56,7 @@ export default function Checks() {
               <thead><tr><th>Date</th><th>Vehicle</th><th>Driver</th><th className="num">Odometer</th><th>Failed items</th><th>Result</th></tr></thead>
               <tbody>
                 {rows.map((c) => (
-                  <tr key={c.id} className="clickable" onClick={() => setViewing(c)}>
+                  <tr key={c.id} className="clickable" onClick={() => navigate(`/checks/${c.id}`)}>
                     <td>{fmtDate(c.date)}</td>
                     <td className="strong">{byId(data.vehicles, c.vehicleId)?.rego ?? '—'}</td>
                     <td>{byId(data.drivers, c.driverId)?.name ?? '—'}</td>
@@ -75,78 +70,123 @@ export default function Checks() {
           </div>
         )}
       </Card>
-      {creating && <CheckForm onClose={closeNew} />}
-      {viewing && (
-        <Modal title={`Pre-start · ${byId(data.vehicles, viewing.vehicleId)?.rego ?? ''}`} onClose={() => setViewing(null)}>
-          <p className="muted">{fmtDate(viewing.date)} · {byId(data.drivers, viewing.driverId)?.name} · signed “{viewing.signature}”</p>
-          <ul className="checklist readonly">
-            {viewing.items.map((i) => (
-              <li key={i.label} className={i.ok ? 'ok' : 'fail'}>
-                {i.ok ? <Check size={16} /> : <X size={16} />}<span>{i.label}{i.note && <em className="small muted"> – {i.note}</em>}</span>
-              </li>
-            ))}
-          </ul>
-        </Modal>
-      )}
     </>
   );
 }
 
-function CheckForm({ onClose }: { onClose: () => void }) {
+export function NewCheck() {
   const { data, submitCheck } = useStore();
-  const [vehicleId, setVehicleId] = useState(data.vehicles[0]?.id ?? '');
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const [vehicleId, setVehicleId] = useState(params.get('vehicle') ?? data.vehicles[0]?.id ?? '');
   const vehicle = byId(data.vehicles, vehicleId);
   const [driverId, setDriverId] = useState(vehicle?.driverId ?? data.drivers[0]?.id ?? '');
   const [odometer, setOdometer] = useState(vehicle?.odometer ?? 0);
   const [items, setItems] = useState<CheckItem[]>(data.settings.checklist.map((label) => ({ label, ok: true })));
   const [signature, setSignature] = useState('');
+  if (!data.vehicles.length || !data.drivers.length) return <Empty title="Add a vehicle and a driver first" />;
 
   const pickVehicle = (id: string) => {
     const v = byId(data.vehicles, id);
-    setVehicleId(id);
-    setOdometer(v?.odometer ?? 0);
+    setVehicleId(id); setOdometer(v?.odometer ?? 0);
     if (v?.driverId) setDriverId(v.driverId);
   };
   const fails = items.filter((i) => !i.ok).length;
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    submitCheck({ vehicleId, driverId, date: todayISO(), odometer, items, signature: signature.trim() });
-    onClose();
-  };
+  const update = (i: number, patch: Partial<CheckItem>) => setItems(items.map((x, j) => (j === i ? { ...x, ...patch } : x)));
 
   return (
-    <Modal title="New pre-start check" onClose={onClose}
-      footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn btn-primary" form="check-form">{fails ? `Submit with ${fails} defect${fails > 1 ? 's' : ''}` : 'Submit – all OK'}</button></>}>
-      <form id="check-form" className="form-grid" onSubmit={submit}>
-        <Field label="Vehicle">
-          <select className="input" value={vehicleId} onChange={(e) => pickVehicle(e.target.value)}>
-            {data.vehicles.map((v) => <option key={v.id} value={v.id}>{v.rego} · {v.name}</option>)}
-          </select>
-        </Field>
-        <Field label="Driver">
-          <select className="input" value={driverId} onChange={(e) => setDriverId(e.target.value)}>
-            {data.drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
-        </Field>
-        <Field label="Odometer (km)" span><input className="input" type="number" min={0} value={odometer} onChange={(e) => setOdometer(Number(e.target.value))} /></Field>
-        <ul className="checklist span-2">
-          {items.map((it, i) => (
-            <li key={it.label} className={it.ok ? 'ok' : 'fail'}>
-              <div className="row between">
-                <span>{it.label}</span>
-                <div className="segmented small">
-                  <button type="button" className={it.ok ? 'on good' : ''} onClick={() => setItems(items.map((x, j) => (j === i ? { ...x, ok: true, note: undefined } : x)))}><Check size={14} /> OK</button>
-                  <button type="button" className={!it.ok ? 'on bad' : ''} onClick={() => setItems(items.map((x, j) => (j === i ? { ...x, ok: false } : x)))}><X size={14} /> Fault</button>
+    <>
+      <PageHeader title="Pre-start check" subtitle="Walk around the vehicle and mark anything that isn't right." />
+      <form className="check-page" onSubmit={(e) => {
+        e.preventDefault();
+        const c = submitCheck({ vehicleId, driverId, date: todayISO(), odometer, items, signature: signature.trim() });
+        if (!fails) celebrate('All clear – safe driving!');
+        navigate(`/checks/${c.id}`);
+      }}>
+        <Card title="Vehicle & driver">
+          <div className="form-grid">
+            <Field label="Vehicle">
+              <select className="input" value={vehicleId} onChange={(e) => pickVehicle(e.target.value)}>{data.vehicles.map((v) => <option key={v.id} value={v.id}>{v.rego} · {v.name}</option>)}</select>
+            </Field>
+            <Field label="Driver">
+              <select className="input" value={driverId} onChange={(e) => setDriverId(e.target.value)}>{data.drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
+            </Field>
+            <Field label="Odometer (km)"><input className="input" type="number" min={0} value={odometer} onChange={(e) => setOdometer(Number(e.target.value))} /></Field>
+          </div>
+        </Card>
+        <Card title={`Checklist · ${items.length - fails}/${items.length} OK`}>
+          <ul className="checklist big">
+            {items.map((it, i) => (
+              <li key={it.label} className={it.ok ? 'ok' : 'fail'}>
+                <div className="row between">
+                  <span className="check-label">{it.label}</span>
+                  <div className="segmented">
+                    <button type="button" className={it.ok ? 'on good' : ''} onClick={() => update(i, { ok: true, note: undefined })}><Check size={14} /> OK</button>
+                    <button type="button" className={!it.ok ? 'on bad' : ''} onClick={() => update(i, { ok: false })}><X size={14} /> Fault</button>
+                  </div>
                 </div>
-              </div>
-              {!it.ok && <input className="input" placeholder="Describe the fault" required value={it.note ?? ''}
-                onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, note: e.target.value } : x)))} />}
-            </li>
-          ))}
-        </ul>
-        <Field label="Driver signature (type your full name)" span><input className="input" required value={signature} onChange={(e) => setSignature(e.target.value)} /></Field>
+                {!it.ok && <input className="input" placeholder="Describe the fault" required value={it.note ?? ''} onChange={(e) => update(i, { note: e.target.value })} />}
+              </li>
+            ))}
+          </ul>
+        </Card>
+        <Card title="Sign off">
+          <Field label="Driver signature (type your full name)"><input className="input signature" required value={signature} onChange={(e) => setSignature(e.target.value)} /></Field>
+          <div className="row gap-sm end">
+            <button type="button" className="btn" onClick={() => navigate(-1)}>Cancel</button>
+            <button className={`btn ${fails ? 'btn-danger' : 'btn-primary'}`}><PenLine size={16} /> {fails ? `Submit with ${fails} defect${fails > 1 ? 's' : ''}` : 'Submit – all OK'}</button>
+          </div>
+        </Card>
       </form>
-    </Modal>
+    </>
+  );
+}
+
+export function CheckDetail() {
+  const { id } = useParams();
+  const { data } = useStore();
+  const c = byId(data.checks, id);
+  if (!c) return <Empty title="Check not found"><Link to="/checks" className="link">Back to checks</Link></Empty>;
+  const v = byId(data.vehicles, c.vehicleId);
+  const d = byId(data.drivers, c.driverId);
+  const defects = data.defects.filter((x) => x.checkId === c.id);
+  const fails = c.items.filter((i) => !i.ok);
+
+  return (
+    <ItemPage
+      entity={{ type: 'check', id: c.id }}
+      back={{ to: '/checks', label: 'All pre-start checks' }}
+      icon={<ClipboardCheck size={28} />}
+      accent={c.passed ? 'teal' : 'red'}
+      eyebrow={<>Pre-start check · {fmtDate(c.date)}</>}
+      title={<>{v?.rego ?? 'Unknown vehicle'} {c.passed ? 'passed' : 'failed'}</>}
+      subtitle={<>By {d ? <Link className="link-light" to={`/drivers/${d.id}`}>{d.name}</Link> : 'unknown driver'} · signed “{c.signature}” · {fmtNum(c.odometer)} km</>}
+      badges={<Badge value={c.passed ? 'passed' : 'failed'} />}
+      stats={[
+        { label: 'Items checked', value: c.items.length },
+        { label: 'Faults', value: fails.length, tone: fails.length ? 'bad' : 'good' },
+        { label: 'Defects raised', value: defects.length },
+      ]}
+      tabs={[{
+        id: 'overview', label: 'Checklist', icon: <LayoutGrid size={15} />, render: () => (
+          <div className="grid-2">
+            <Card title="Checklist results">
+              <ul className="checklist readonly">
+                {c.items.map((i) => (
+                  <li key={i.label} className={i.ok ? 'ok' : 'fail'}>{i.ok ? <Check size={16} /> : <X size={16} />}<span>{i.label}{i.note && <em className="small muted"> – {i.note}</em>}</span></li>
+                ))}
+              </ul>
+            </Card>
+            <Card title="Defects raised">
+              <ul className="list">
+                {defects.map((x) => <li key={x.id}><Link className="link" to={`/defects/${x.id}`}>{x.item} – {x.description}</Link><Badge value={x.status} /></li>)}
+                {defects.length === 0 && <li className="muted">No defects – vehicle cleared for use.</li>}
+              </ul>
+              {v && <Link className="btn btn-sm" to={`/vehicles/${v.id}`}>Open {v.rego}</Link>}
+            </Card>
+          </div>
+        ),
+      }]}
+    />
   );
 }

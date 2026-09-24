@@ -15,6 +15,8 @@ Torqline uses [Supabase](https://supabase.com), which provides a hosted Postgres
 
 This creates the tables, the role-based security rules, the activity log and live updates. It's safe to run again later.
 
+> **Updating from an earlier version?** Run `schema.sql` again. It's safe to re-run, and it adds what the newer features need: NCRs, audits, documents, reminders, notes, item history and the private `documents` storage bucket for uploaded files.
+
 ## 3. Tell Supabase where the app lives
 
 Open **Authentication** → **URL Configuration** and set:
@@ -45,8 +47,8 @@ These two values are designed to be public. What each person can see and change 
 | --- | --- |
 | **Admin** | Everything, plus the admin panel: approve or deactivate users, change roles, view the activity log, backups and demo data |
 | **Manager** | Create, edit and delete all fleet records; change settings |
-| **Technician** | Work orders, service schedules, parts, defects, pre-start checks, fuel, odometer readings |
-| **Driver** | Pre-start checks, defect reports, fuel fills, odometer readings |
+| **Technician** | Work orders, service schedules, parts, defects, NCRs, audits, reminders, pre-start checks, fuel, documents, notes, odometer readings |
+| **Driver** | Pre-start checks, defect reports, fuel fills, documents, notes, odometer readings |
 | **Viewer** | Read-only access |
 
 There must always be at least one active admin, and nobody can change their own role.

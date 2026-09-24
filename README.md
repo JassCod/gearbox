@@ -4,45 +4,42 @@ Torqline is a web app for running a vehicle and equipment fleet. It supports **t
 
 ## Features
 
+**Every record has its own page.** Vehicles, work orders, defects, parts, drivers, service schedules, pre-start checks, fuel fills, NCRs and audits each open as a full page with a header banner and tabs. Four tabs come with every item:
+
+| Tab | What it does |
+| --- | --- |
+| **Documents** | Drag-and-drop uploads (registration papers, invoices, photos, certificates) with categories and optional expiry dates. Expiry dates feed the compliance register and alerts. |
+| **Reminders** | Due dates, repeats (weekly to yearly), priority and assignee. Repeating reminders roll forward when ticked off. |
+| **History** | An automatic timeline of every change (status moves, field edits, documents, notes), plus related events such as completed jobs and checks. |
+| **Notes** | A team comment thread with pinning. |
+
+**Operations**
+
 | Area | What you can do |
 | --- | --- |
-| **Dashboard** | See fleet availability and green/amber/red health at a glance, plus KPI tiles, a 6-month spend chart, upcoming services, and a "needs attention" feed |
-| **Vehicles & assets** | Trucks, vans, utes, cars, trailers, forklifts and excavators, shown as a table or cards, with filters and CSV export. Each asset has its own page with service progress, work order history, defects, fuel chart and costs |
-| **Service schedules** | Set intervals by **km, engine hours or days**, whichever comes first. See progress bars, book a service as a work order in one click, or mark it done |
-| **Work orders** | Kanban board with drag and drop (Open → In progress → Waiting on parts → Completed) or a list view. Add parts from inventory, track labour cost and print job cards |
-| **Pre-start checks** | Mobile-friendly checklist with a typed signature. Failed items **automatically become defects** |
-| **Defects** | Filter by severity and status, and turn a defect into a work order in one click |
-| **Parts inventory** | Stock levels, low-stock and out-of-stock alerts, and a CSV re-order list |
-| **Drivers** | Licence, medical and training expiry tracking, plus each driver's pre-start pass rate |
-| **Fuel log** | Record fills, spend and price per litre, and see economy (L/100 km) |
-| **Calendar** | Month view of work orders, services, and vehicle and driver expiries |
-| **Reports** | Cost per vehicle and per km, spend by depot and by job type, on-time completion, pre-start pass rate, most-reported defect areas, workshop productivity |
-| **Team & admin panel** | Email and password login, and new accounts wait for an admin's approval. Five roles (admin, manager, technician, driver, viewer), each enforced by the database. Changes sync live between everyone who has the app open. The admin panel has user management, an activity log (who changed what, exportable as CSV), a role and permission overview, and backup and demo-data tools |
-| **Settings** | Company name, currency, labour rate, depots, custom pre-start checklist, JSON backup and restore |
+| **Dashboard** | A greeting with a one-line summary, the compliance score gauge, KPI tiles with count-up numbers, fleet health, spend, services due, reminders due, open NCRs and a "needs attention" feed |
+| **Vehicles** | Card or table view with a health filter. Vehicle pages have Overview, Maintenance, Fuel & costs (cost per km, economy chart), Defects & checks and Compliance tabs |
+| **Work orders** | A Kanban board. Job pages have a status stepper, task checklist (standard templates for services, tyres and inspections), parts & labour costing and a printable job card |
+| **Schedules** | Service intervals by km, hours or days, with progress rings, service history and one-click booking |
+| **Pre-starts & defects** | A full-page walk-around checklist with signature. Faults become defects automatically; repeat defects are flagged, and critical defects take the vehicle off the road |
+| **Parts, drivers, fuel** | Stock gauges and receiving stock; licence, medical and training timelines; fuel economy per tank with anomaly warnings |
 
-Everyday touches:
-- Global search (Ctrl/⌘ K) and an alerts bell.
-- Dark mode.
-- Responsive layout for phones.
-- Printable reports.
+**Compliance**
 
-### Automations
-- Completing a work order deducts the parts it used from stock, resolves the linked defect, and resets the linked service schedule.
-- Fuel fills and pre-start checks update the vehicle's odometer.
-- A vehicle in the workshop goes back to *active* once its last open job is completed.
+| Area | What you can do |
+| --- | --- |
+| **Compliance hub** | An animated 0–100 score (grade A–D) that lists exactly what is costing points; a register of everything that expires; a driver compliance grid; a risk heat map; upcoming audits |
+| **NCRs** | Non-conformance reports with the full lifecycle: Raised → Investigation (containment, **5 whys**, fishbone category, root cause) → Corrective & preventive actions → Verification (effective / not effective) → Closed. Each has a likelihood × impact risk rating, and the register exports to CSV. NCRs can be raised from a defect, an audit finding or a work order |
+| **Audits** | Four templates (vehicle roadworthiness, depot safety walk, driver compliance review, maintenance records). Audits are scored pass/fail/N-A with notes, and **failed items raise NCRs in one click** |
 
-## Live site
+**Across the app**
+- A command palette (Ctrl/⌘ K) searches every record and jumps to actions.
+- An alerts bell collects expiries, overdue items, reminders and NCRs.
+- Calendar, reports, dark mode and phone layout.
+- Celebration confetti when a job, NCR or audit is closed out.
+- An animated login page.
 
-https://jasscod.github.io/gearbox/ – redeployed automatically by `.github/workflows/deploy.yml` on every push to `main`.
-
-## Getting started
-
-```bash
-npm install
-npm run dev       # start the dev server at http://localhost:5173
-npm run build     # type-check and build a production bundle into dist/
-npm run preview   # serve the production build
-```
+**Team mode** adds email/password logins with admin approval, five roles enforced by the database, live sync between users, file storage for documents, and the admin panel (users, activity log, role overview, backups).
 
 ### Two modes
 

@@ -1,17 +1,20 @@
 import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { ClipboardCheck, Package, TriangleAlert, Truck, Wrench, CalendarClock } from 'lucide-react';
+import { ClipboardCheck, Package, TriangleAlert, Truck, Wrench, CalendarClock, ShieldAlert, Check } from 'lucide-react';
 import { useStore } from '../store';
 import { usePermissions } from '../auth';
-import { Badge, Card, HealthDot, PageHeader, StatCard } from '../components/ui';
+import { Badge, Card, HealthDot, StatCard } from '../components/ui';
+import { ScoreGauge } from './Compliance';
+import { complianceScore, describeDue, riskLevel, riskScore } from '../lib/compliance';
+import { entityLink, entityTitle } from '../lib/entities';
 import { buildAlerts } from '../lib/alerts';
-import { byId, fmtDate, fmtMoney, parseISO, relDays, serviceDue, todayISO, vehicleHealth, workOrderCost } from '../lib/utils';
+import { byId, daysUntil, fmtDate, fmtMoney, parseISO, relDays, serviceDue, todayISO, vehicleHealth, workOrderCost } from '../lib/utils';
 
 const HEALTH_COLORS = { green: 'var(--good)', amber: 'var(--warn)', red: 'var(--bad)' };
 
 export default function Dashboard() {
-  const { data } = useStore();
+  const { data, actor, completeReminder } = useStore();
   const navigate = useNavigate();
   const perm = usePermissions();
   const cur = data.settings.currency;
@@ -55,15 +58,35 @@ export default function Dashboard() {
     return months;
   }, [data]);
 
+  const compliance = useMemo(() => complianceScore(data), [data]);
+  const openNcrs = data.ncrs.filter((n) => n.status !== 'closed').sort((a, b) => riskScore(b) - riskScore(a));
+  const dueReminders = data.reminders.filter((r) => !r.done && daysUntil(r.dueDate) <= 7).sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, 6);
+  const firstName = (actor === 'You' ? '' : actor.split(' ')[0]) || 'there';
+  const urgentCount = alerts.filter((a) => a.level === 'bad').length;
+  const summaryLine = urgentCount
+    ? `${urgentCount} thing${urgentCount > 1 ? 's' : ''} need${urgentCount > 1 ? '' : 's'} action today, ${openWOs.length} jobs are open and ${available} of ${data.vehicles.length} assets are on the road.`
+    : `Everything urgent is handled. ${available} of ${data.vehicles.length} assets are on the road and ${openWOs.length} jobs are open.`;
   const pie = (['green', 'amber', 'red'] as const).map((k) => ({ name: k, value: counts[k] })).filter((x) => x.value);
 
   return (
     <>
-      <PageHeader title="Fleet overview" subtitle={`${data.settings.companyName} · ${fmtDate(todayISO())}`}
-        actions={<>
-          {perm.canWrite('checks') && <Link className="btn" to="/checks?new=1"><ClipboardCheck size={16} /> New pre-start</Link>}
-          {perm.canWrite('workOrders') && <Link className="btn btn-primary" to="/work-orders?new=1"><Wrench size={16} /> New work order</Link>}
-        </>} />
+      <section className="welcome">
+        <div className="welcome-art" aria-hidden><div className="orb o1" /><div className="orb o2" /><div className="road-line" /></div>
+        <div className="welcome-text">
+          <span className="welcome-date">{new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+          <h1>{greeting()}, {firstName}</h1>
+          <p>{summaryLine}</p>
+          <div className="row gap-sm wrap">
+            {perm.canWrite('checks') && <Link className="btn btn-glass" to="/checks/new"><ClipboardCheck size={16} /> New pre-start</Link>}
+            {perm.canWrite('workOrders') && <Link className="btn btn-light" to="/work-orders/new"><Wrench size={16} /> New work order</Link>}
+            {perm.canWrite('ncrs') && <Link className="btn btn-glass" to="/ncr/new"><ShieldAlert size={16} /> Raise NCR</Link>}
+          </div>
+        </div>
+        <Link to="/compliance" className="welcome-score" title="Compliance score">
+          <ScoreGauge score={compliance.score} grade={compliance.grade} size={170} />
+          <span>Compliance score</span>
+        </Link>
+      </section>
 
       <div className="stats">
         <StatCard label="Fleet availability" icon={<Truck size={18} />}
@@ -161,7 +184,7 @@ export default function Dashboard() {
             {openWOs.slice(0, 6).map((w) => (
               <li key={w.id}>
                 <div>
-                  <Link to={`/work-orders?open=${w.id}`} className="strong">#{w.number} {w.title}</Link>
+                  <Link to={`/work-orders/${w.id}`} className="strong">#{w.number} {w.title}</Link>
                   <div className="small muted">{byId(data.vehicles, w.vehicleId)?.rego} · due {relDays(w.dueDate)}</div>
                 </div>
                 <div className="row gap-sm"><Badge value={w.priority} /><Badge value={w.status} /></div>
@@ -187,6 +210,37 @@ export default function Dashboard() {
           </ul>
         </Card>
       </div>
+      <div className="grid-2">
+        <Card title="Reminders due" actions={<Link to="/reminders" className="link small">All reminders</Link>}>
+          <ul className="reminder-list">
+            {dueReminders.map((r) => (
+              <li key={r.id} className={daysUntil(r.dueDate) < 0 ? 'overdue' : ''}>
+                <button className="tick" disabled={!perm.canWrite('reminders')} onClick={() => completeReminder(r.id)} aria-label={`Complete ${r.title}`}><Check size={14} /></button>
+                <div className="grow"><strong>{r.title}</strong>
+                  <div className="small muted"><Link className="link" to={`${entityLink(r.entityType, r.entityId)}?tab=reminders`}>{entityTitle(data, r.entityType, r.entityId)}</Link> · {daysUntil(r.dueDate) < 0 ? <span className="tone-text-bad">overdue</span> : `due ${relDays(r.dueDate)}`}</div></div>
+                <Badge value={r.priority} />
+              </li>
+            ))}
+            {dueReminders.length === 0 && <li className="muted">No reminders due this week.</li>}
+          </ul>
+        </Card>
+        <Card title="Open NCRs" actions={<Link to="/ncr" className="link small">NCR register</Link>}>
+          <ul className="list">
+            {openNcrs.slice(0, 6).map((n) => (
+              <li key={n.id}>
+                <div><Link to={`/ncr/${n.id}`} className="strong">NCR-{n.number} {n.title}</Link><div className="small muted">{n.category} · {describeDue(n.dueDate)}</div></div>
+                <div className="row gap-sm"><span className={`risk-chip risk-${riskLevel(riskScore(n))}`}>{riskScore(n)}</span><Badge value={n.status} /></div>
+              </li>
+            ))}
+            {openNcrs.length === 0 && <li className="muted">No open non-conformances. 🎉</li>}
+          </ul>
+        </Card>
+      </div>
     </>
   );
+}
+
+function greeting() {
+  const h = new Date().getHours();
+  return h < 5 ? 'Working late' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 }

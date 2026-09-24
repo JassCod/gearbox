@@ -21,13 +21,19 @@ create table if not exists public.profiles (
 -- keyed by collection + id. This mirrors the app's data model 1:1.
 create table if not exists public.records (
   collection text not null
-             check (collection in ('vehicles', 'schedules', 'workOrders', 'defects', 'checks', 'parts', 'drivers', 'fuel')),
+             check (collection <> ''),
   id         text not null,
   data       jsonb not null,
   updated_at timestamptz not null default now(),
   updated_by uuid default auth.uid(),
   primary key (collection, id)
 );
+
+-- Allowed collections (kept outside CREATE TABLE so re-running this file upgrades older installs).
+alter table public.records drop constraint if exists records_collection_check;
+alter table public.records add constraint records_collection_check
+  check (collection in ('vehicles', 'schedules', 'workOrders', 'defects', 'checks', 'parts', 'drivers', 'fuel',
+                                 'ncrs', 'audits', 'attachments', 'reminders', 'notes', 'activity'));
 
 create table if not exists public.app_settings (
   id         int primary key default 1 check (id = 1),
@@ -66,9 +72,10 @@ returns boolean language sql stable security definer set search_path = public as
   select case public.my_role()
     when 'admin'      then true
     when 'manager'    then true
-    when 'technician' then target in ('vehicles', 'schedules', 'workOrders', 'defects', 'checks', 'parts', 'fuel')
+    when 'technician' then target in ('vehicles', 'schedules', 'workOrders', 'defects', 'checks', 'parts', 'fuel',
+                                      'ncrs', 'audits', 'attachments', 'reminders', 'notes', 'activity')
     -- Drivers submit checks, defects and fuel; those also bump the vehicle odometer.
-    when 'driver'     then target in ('vehicles', 'checks', 'defects', 'fuel')
+    when 'driver'     then target in ('vehicles', 'checks', 'defects', 'fuel', 'attachments', 'notes', 'activity')
     else false
   end
 $$;
@@ -141,10 +148,15 @@ begin
   select p.email into email from public.profiles p where p.id = auth.uid();
 
   if tg_table_name = 'records' then
+    -- The app keeps its own per-item history in the 'activity' collection; don't echo it here.
+    if (case when tg_op = 'DELETE' then old.collection else new.collection end) = 'activity' then
+      return null;
+    end if;
     row_data := case when tg_op = 'DELETE' then old.data else new.data end;
     label := coalesce(
       case when row_data ? 'number' then '#' || (row_data ->> 'number') || ' ' || coalesce(row_data ->> 'title', '') end,
-      row_data ->> 'rego', row_data ->> 'name', row_data ->> 'item', row_data ->> 'sku',
+      row_data ->> 'title', row_data ->> 'rego', row_data ->> 'name', row_data ->> 'item', row_data ->> 'sku',
+      left(row_data ->> 'text', 60),
       case when row_data ? 'passed' then 'Pre-start ' || case when (row_data ->> 'passed')::boolean then 'passed' else 'failed' end end,
       case when row_data ? 'litres' then 'Fuel fill ' || (row_data ->> 'litres') || ' L' end,
       case when tg_op = 'DELETE' then old.id else new.id end);
@@ -212,7 +224,7 @@ declare
   existing jsonb;
   allowed  text[];
 begin
-  if new.collection <> 'vehicles' or role not in ('driver', 'technician') then
+  if new.collection <> 'vehicles' or coalesce(role, '') not in ('driver', 'technician') then
     return new;
   end if;
   allowed := case when role = 'technician' then array['odometer', 'hours', 'status'] else array['odometer', 'hours'] end;
@@ -288,6 +300,31 @@ grant select, update, delete on public.profiles to authenticated;
 grant select, insert, update, delete on public.records to authenticated;
 grant select, insert, update on public.app_settings to authenticated;
 grant select on public.audit_log to authenticated;
+
+-- ---------- Document storage ------------------------------------------
+-- Files attached to items (registration papers, invoices, photos…) live in a
+-- private bucket. Members can read; anyone who can write records can upload;
+-- managers and admins can delete.
+
+do $$
+begin
+  if exists (select 1 from information_schema.schemata where schema_name = 'storage') then
+    insert into storage.buckets (id, name, public) values ('documents', 'documents', false)
+      on conflict (id) do nothing;
+
+    drop policy if exists "documents: read" on storage.objects;
+    create policy "documents: read" on storage.objects for select to authenticated
+      using (bucket_id = 'documents' and public.is_member());
+
+    drop policy if exists "documents: upload" on storage.objects;
+    create policy "documents: upload" on storage.objects for insert to authenticated
+      with check (bucket_id = 'documents' and public.my_role() in ('admin', 'manager', 'technician', 'driver'));
+
+    drop policy if exists "documents: delete" on storage.objects;
+    create policy "documents: delete" on storage.objects for delete to authenticated
+      using (bucket_id = 'documents' and public.my_role() in ('admin', 'manager'));
+  end if;
+end $$;
 
 -- ---------- Realtime --------------------------------------------------
 -- Lets every open browser see changes the moment they are saved.

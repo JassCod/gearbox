@@ -4,41 +4,51 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useStore } from '../store';
 import { Card, PageHeader } from '../components/ui';
 import { byId, serviceDue, toISO, todayISO } from '../lib/utils';
+import { entityLink } from '../lib/entities';
 
 interface CalEvent {
   id: string;
   date: string;
   label: string;
-  kind: 'wo' | 'service' | 'compliance' | 'driver';
+  kind: 'wo' | 'service' | 'compliance' | 'driver' | 'reminder' | 'audit' | 'ncr';
   to: string;
 }
 
-const KIND_LABEL = { wo: 'Work order', service: 'Service due', compliance: 'Vehicle expiry', driver: 'Driver expiry' };
+const KIND_LABEL = { wo: 'Work order', service: 'Service due', compliance: 'Vehicle expiry', driver: 'Driver expiry', reminder: 'Reminder', audit: 'Audit', ncr: 'NCR due' };
 
 export default function Calendar() {
   const { data } = useStore();
   const [cursor, setCursor] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
-  const [kinds, setKinds] = useState<Record<CalEvent['kind'], boolean>>({ wo: true, service: true, compliance: true, driver: true });
+  const [kinds, setKinds] = useState<Record<CalEvent['kind'], boolean>>({ wo: true, service: true, compliance: true, driver: true, reminder: true, audit: true, ncr: true });
 
   const events = useMemo(() => {
     const out: CalEvent[] = [];
     for (const w of data.workOrders) {
       if (w.status === 'completed') continue;
-      out.push({ id: `wo-${w.id}`, date: w.dueDate, kind: 'wo', label: `#${w.number} ${byId(data.vehicles, w.vehicleId)?.rego ?? ''} ${w.title}`, to: `/work-orders?open=${w.id}` });
+      out.push({ id: `wo-${w.id}`, date: w.dueDate, kind: 'wo', label: `#${w.number} ${byId(data.vehicles, w.vehicleId)?.rego ?? ''} ${w.title}`, to: `/work-orders/${w.id}` });
     }
     for (const s of data.schedules) {
       const v = byId(data.vehicles, s.vehicleId);
       const due = serviceDue(s, v);
-      if (due.nextDate) out.push({ id: `sv-${s.id}`, date: due.nextDate, kind: 'service', label: `${v?.rego ?? ''} ${s.name}`, to: '/maintenance' });
+      if (due.nextDate) out.push({ id: `sv-${s.id}`, date: due.nextDate, kind: 'service', label: `${v?.rego ?? ''} ${s.name}`, to: `/maintenance/${s.id}` });
     }
     for (const v of data.vehicles) {
       out.push({ id: `rg-${v.id}`, date: v.regoExpiry, kind: 'compliance', label: `${v.rego} registration`, to: `/vehicles/${v.id}` });
       out.push({ id: `in-${v.id}`, date: v.insuranceExpiry, kind: 'compliance', label: `${v.rego} insurance`, to: `/vehicles/${v.id}` });
     }
     for (const d of data.drivers) {
-      out.push({ id: `lc-${d.id}`, date: d.licenceExpiry, kind: 'driver', label: `${d.name} licence`, to: '/drivers' });
-      out.push({ id: `md-${d.id}`, date: d.medicalExpiry, kind: 'driver', label: `${d.name} medical`, to: '/drivers' });
-      d.trainings.forEach((t, i) => out.push({ id: `tr-${d.id}-${i}`, date: t.expiry, kind: 'driver', label: `${d.name} ${t.name}`, to: '/drivers' }));
+      out.push({ id: `lc-${d.id}`, date: d.licenceExpiry, kind: 'driver', label: `${d.name} licence`, to: `/drivers/${d.id}` });
+      out.push({ id: `md-${d.id}`, date: d.medicalExpiry, kind: 'driver', label: `${d.name} medical`, to: `/drivers/${d.id}` });
+      d.trainings.forEach((t, i) => out.push({ id: `tr-${d.id}-${i}`, date: t.expiry, kind: 'driver', label: `${d.name} ${t.name}`, to: `/drivers/${d.id}` }));
+    }
+    for (const r of data.reminders) {
+      if (!r.done) out.push({ id: `rm-${r.id}`, date: r.dueDate, kind: 'reminder', label: r.title, to: `${entityLink(r.entityType, r.entityId)}?tab=reminders` });
+    }
+    for (const a of data.audits) {
+      if (a.status !== 'completed') out.push({ id: `au-${a.id}`, date: a.date, kind: 'audit', label: `AUD-${a.number} ${a.title}`, to: `/audits/${a.id}` });
+    }
+    for (const n of data.ncrs) {
+      if (n.status !== 'closed') out.push({ id: `nc-${n.id}`, date: n.dueDate, kind: 'ncr', label: `NCR-${n.number} ${n.title}`, to: `/ncr/${n.id}` });
     }
     return out.filter((e) => kinds[e.kind]);
   }, [data, kinds]);

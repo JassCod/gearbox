@@ -5,8 +5,8 @@ export type Role = 'admin' | 'manager' | 'technician' | 'driver' | 'viewer' | 'p
 export const ROLES: { value: Exclude<Role, 'pending'>; label: string; summary: string }[] = [
   { value: 'admin', label: 'Admin', summary: 'Everything, plus users, activity log and data tools' },
   { value: 'manager', label: 'Manager', summary: 'Create, edit and delete all fleet records and settings' },
-  { value: 'technician', label: 'Technician', summary: 'Work orders, services, parts, defects, checks and fuel' },
-  { value: 'driver', label: 'Driver', summary: 'Pre-start checks, defect reports and fuel fills' },
+  { value: 'technician', label: 'Technician', summary: 'Work orders, services, parts, defects, NCRs, audits, checks and fuel' },
+  { value: 'driver', label: 'Driver', summary: 'Pre-start checks, defect reports, fuel fills, documents and notes' },
   { value: 'viewer', label: 'Viewer', summary: 'Read-only access to everything' },
 ];
 
@@ -14,8 +14,9 @@ export const ROLES: { value: Exclude<Role, 'pending'>; label: string; summary: s
 const WRITE: Record<Role, CollectionKey[] | 'all'> = {
   admin: 'all',
   manager: 'all',
-  technician: ['vehicles', 'schedules', 'workOrders', 'defects', 'checks', 'parts', 'fuel'],
-  driver: ['vehicles', 'checks', 'defects', 'fuel'],
+  technician: ['vehicles', 'schedules', 'workOrders', 'defects', 'checks', 'parts', 'fuel',
+    'ncrs', 'audits', 'attachments', 'reminders', 'notes', 'activity'],
+  driver: ['vehicles', 'checks', 'defects', 'fuel', 'attachments', 'notes', 'activity'],
   viewer: [],
   pending: [],
 };

@@ -1,12 +1,18 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { AppData, CollectionKey, Defect, PrestartCheck, Settings, WorkOrder } from './types';
+import type {
+  ActivityEvent, AppData, Attachment, CollectionKey, Defect, EntityType, Ncr, Note, PrestartCheck, Reminder, Settings, WorkOrder,
+} from './types';
 import { createSeed } from './data/seed';
-import { todayISO, uid } from './lib/utils';
+import { addDays, todayISO, uid } from './lib/utils';
 import { supabase } from './lib/supabase';
 import { useAuth } from './auth';
-import { applyRemote, diff, emptyData, isEmptyDiff, loadAll, pushDiff, stableStringify } from './lib/cloudSync';
+import { applyRemote, COLLECTIONS, diff, emptyData, isEmptyDiff, loadAll, pushDiff, stableStringify } from './lib/cloudSync';
+import { describeChanges, ENTITY_BY_COLLECTION } from './lib/entities';
 
 const STORAGE_KEY = 'torqline:data:v1';
+/** Files larger than this can't be kept in the browser's local storage. */
+export const LOCAL_FILE_LIMIT = 1024 * 1024;
+const ACTIVITY_CAP = 3000;
 
 type Item<K extends CollectionKey> = AppData[K][number];
 
@@ -18,7 +24,16 @@ interface Store {
   submitCheck(check: Omit<PrestartCheck, 'id' | 'passed'>): PrestartCheck;
   createWorkOrderFromDefect(defect: Defect): WorkOrder;
   setWorkOrderStatus(id: string, status: WorkOrder['status']): void;
+  nextNumber(key: 'workOrders' | 'ncrs' | 'audits'): number;
   nextWorkOrderNumber(): number;
+  addNote(entityType: EntityType, entityId: string, text: string): void;
+  saveReminder(reminder: Reminder): void;
+  completeReminder(id: string): void;
+  addAttachment(entityType: EntityType, entityId: string, file: File, meta: { category: string; expiry?: string; notes?: string }): Promise<Attachment>;
+  removeAttachment(att: Attachment): Promise<void>;
+  attachmentUrl(att: Attachment): Promise<string | null>;
+  raiseNcr(input: Partial<Ncr> & Pick<Ncr, 'title'>): Ncr;
+  actor: string;
   replaceAll(data: AppData): void;
   resetDemo(): void;
   clearAll(): void;
@@ -35,17 +50,77 @@ export interface SyncState {
 
 const Ctx = createContext<Store | null>(null);
 
+/** Fill in collections that older saves or backups don't have yet. */
+export function normalize(input: Partial<AppData>): AppData {
+  const base = createSeed();
+  const out = { ...emptyData(base.settings), ...input } as AppData;
+  for (const c of COLLECTIONS) if (!Array.isArray(out[c])) (out[c] as unknown[]) = [];
+  out.settings = { ...base.settings, ...(input.settings ?? {}) };
+  return out;
+}
+
 function load(): AppData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as AppData;
-      if (parsed && Array.isArray(parsed.vehicles)) return parsed;
+      if (parsed && Array.isArray(parsed.vehicles)) return normalize(parsed);
     }
   } catch {
     /* ignore corrupt or unavailable storage */
   }
   return createSeed();
+}
+
+const REPEAT_DAYS: Record<Reminder['repeat'], number> = { none: 0, weekly: 7, monthly: 30, quarterly: 91, yearly: 365 };
+
+/**
+ * Compare two snapshots and write history events for every item that was
+ * created, changed or deleted – so every screen gets an audit trail for free.
+ */
+function withActivity(prev: AppData, next: AppData, actor: string): AppData {
+  const events: ActivityEvent[] = [];
+  const now = new Date().toISOString();
+  const push = (e: Omit<ActivityEvent, 'id' | 'at' | 'by'>) => events.push({ ...e, id: uid(), at: now, by: actor });
+
+  for (const c of COLLECTIONS) {
+    if (prev[c] === next[c] || c === 'activity') continue;
+    const before = new Map((prev[c] as { id: string }[]).map((x) => [x.id, x]));
+    const meta = ENTITY_BY_COLLECTION[c];
+    for (const item of next[c] as unknown as ({ id: string } & Record<string, unknown>)[]) {
+      const old = before.get(item.id) as ({ id: string } & Record<string, unknown>) | undefined;
+      before.delete(item.id);
+      if (old === item) continue;
+      if (meta) {
+        if (!old) push({ entityType: meta.type, entityId: item.id, kind: 'created', text: `${meta.singular} created` });
+        else {
+          const change = describeChanges(old, item);
+          if (change) push({ entityType: meta.type, entityId: item.id, kind: change.status ? 'status' : 'updated', text: change.text });
+        }
+      } else if (c === 'attachments' && !old) {
+        const a = item as unknown as Attachment;
+        push({ entityType: a.entityType, entityId: a.entityId, kind: 'document', text: `Document added: ${a.name} (${a.category})` });
+      } else if (c === 'reminders') {
+        const r = item as unknown as Reminder;
+        if (!old) push({ entityType: r.entityType, entityId: r.entityId, kind: 'reminder', text: `Reminder set: ${r.title} – due ${r.dueDate}` });
+        else if (r.done && !(old as unknown as Reminder).done) push({ entityType: r.entityType, entityId: r.entityId, kind: 'reminder', text: `Reminder completed: ${r.title}` });
+      } else if (c === 'notes' && !old) {
+        const n = item as unknown as Note;
+        push({ entityType: n.entityType, entityId: n.entityId, kind: 'note', text: `Note added: “${n.text.slice(0, 80)}${n.text.length > 80 ? '…' : ''}”` });
+      }
+    }
+    for (const old of before.values()) {
+      const o = old as { id: string } & Record<string, unknown>;
+      if (meta) push({ entityType: meta.type, entityId: o.id, kind: 'deleted', text: `${meta.singular} deleted` });
+      else if (c === 'attachments') {
+        const a = o as unknown as Attachment;
+        push({ entityType: a.entityType, entityId: a.entityId, kind: 'document', text: `Document removed: ${a.name}` });
+      }
+    }
+  }
+  if (!events.length) return next;
+  const activity = [...events, ...next.activity];
+  return { ...next, activity: activity.length > ACTIVITY_CAP ? activity.slice(0, ACTIVITY_CAP) : activity };
 }
 
 /**
@@ -54,11 +129,22 @@ function load(): AppData {
  * pushed to Supabase, and other people's changes stream in over realtime.
  */
 export function StoreProvider({ children, cloud = false }: { children: ReactNode; cloud?: boolean }) {
-  const [data, setData] = useState<AppData>(() => (cloud ? emptyData(createSeed().settings) : load()));
+  const [data, setRawData] = useState<AppData>(() => (cloud ? emptyData(createSeed().settings) : load()));
   const [status, setStatus] = useState<SyncState['status']>(cloud ? 'loading' : 'ready');
   const [pending, setPending] = useState(0);
   const [syncError, setSyncError] = useState<string | null>(null);
-  const { refreshProfile } = useAuth();
+  const { refreshProfile, profile, session, mode } = useAuth();
+  const actor = mode === 'local' ? 'You' : profile?.full_name || session?.user.email || 'Someone';
+  const actorRef = useRef(actor);
+  actorRef.current = actor;
+
+  /** Local edits: every change also records history events. Remote/bulk loads use setRawData. */
+  const setData = useCallback((fn: (prev: AppData) => AppData) => {
+    setRawData((prev) => {
+      const next = fn(prev);
+      return next === prev ? prev : withActivity(prev, next, actorRef.current);
+    });
+  }, []);
   /** Last state known to be on the server. */
   const synced = useRef<AppData | null>(null);
   const queue = useRef<Promise<void>>(Promise.resolve());
@@ -89,8 +175,10 @@ export function StoreProvider({ children, cloud = false }: { children: ReactNode
     try {
       const { data: remote } = await loadAll(supabase, createSeed().settings);
       inFlight.current.clear();
-      synced.current = remote;
-      setData(remote);
+      // The server snapshot and the screen must be the very same object, or the diff sees phantom edits.
+      const snapshot = normalize(remote);
+      synced.current = snapshot;
+      setRawData(snapshot);
       setStatus('ready');
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : 'Could not load data');
@@ -132,7 +220,7 @@ export function StoreProvider({ children, cloud = false }: { children: ReactNode
     type Change = Parameters<typeof applyRemote>[1];
     const apply = (change: Change) => {
       if (synced.current) synced.current = applyRemote(synced.current, change);
-      setData((prev) => applyRemote(prev, change));
+      setRawData((prev) => applyRemote(prev, change));
     };
     const channel = client.channel('workspace')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'records' }, (payload) => {
@@ -151,7 +239,7 @@ export function StoreProvider({ children, cloud = false }: { children: ReactNode
         if (!settings || isOwnEcho('settings', stableStringify(settings))) return;
         const same = (a: Settings) => stableStringify(a) === stableStringify(settings);
         if (synced.current && !same(synced.current.settings)) synced.current = { ...synced.current, settings };
-        setData((prev) => (same(prev.settings) ? prev : { ...prev, settings }));
+        setRawData((prev) => (same(prev.settings) ? prev : { ...prev, settings }));
       })
       .subscribe();
     return () => { client.removeChannel(channel); };
@@ -171,7 +259,7 @@ export function StoreProvider({ children, cloud = false }: { children: ReactNode
       }
       return out;
     });
-  }, []);
+  }, [setData]);
 
   const remove = useCallback((key: CollectionKey, id: string) => {
     setData((prev) => {
@@ -271,22 +359,107 @@ export function StoreProvider({ children, cloud = false }: { children: ReactNode
     });
   }, []);
 
-  const replaceAll = useCallback((next: AppData) => setData(next), []);
-  const resetDemo = useCallback(() => setData(createSeed()), []);
-  const clearAll = useCallback(() => setData((prev) => ({
-    vehicles: [], schedules: [], workOrders: [], defects: [], checks: [], parts: [], drivers: [], fuel: [],
-    settings: prev.settings,
-  })), []);
+  const nextNumber = useCallback((key: 'workOrders' | 'ncrs' | 'audits') => {
+    const start = key === 'workOrders' ? 1000 : key === 'ncrs' ? 100 : 10;
+    return (data[key] as { number: number }[]).reduce((m, x) => Math.max(m, x.number), start) + 1;
+  }, [data]);
+
+  const addNote = useCallback((entityType: EntityType, entityId: string, text: string) => {
+    const note: Note = { id: uid(), entityType, entityId, text, at: new Date().toISOString(), by: actorRef.current };
+    setData((prev) => ({ ...prev, notes: [note, ...prev.notes] }));
+  }, [setData]);
+
+  const saveReminder = useCallback((reminder: Reminder) => {
+    setData((prev) => {
+      const exists = prev.reminders.some((r) => r.id === reminder.id);
+      return { ...prev, reminders: exists ? prev.reminders.map((r) => (r.id === reminder.id ? reminder : r)) : [reminder, ...prev.reminders] };
+    });
+  }, [setData]);
+
+  /** Tick off a reminder; repeating reminders roll forward to their next date. */
+  const completeReminder = useCallback((id: string) => {
+    setData((prev) => {
+      const r = prev.reminders.find((x) => x.id === id);
+      if (!r || r.done) return prev;
+      const done = { ...r, done: true, doneAt: todayISO() };
+      const again = r.repeat !== 'none' ? [{ ...r, id: uid(), done: false, doneAt: undefined, dueDate: addDays(r.dueDate, REPEAT_DAYS[r.repeat]) }] : [];
+      return { ...prev, reminders: [...again, ...prev.reminders.map((x) => (x.id === id ? done : x))] };
+    });
+  }, [setData]);
+
+  const addAttachment = useCallback(async (entityType: EntityType, entityId: string, file: File, meta: { category: string; expiry?: string; notes?: string }) => {
+    const base: Attachment = {
+      id: uid(), entityType, entityId, name: file.name, category: meta.category, mime: file.type || 'application/octet-stream',
+      size: file.size, storage: 'inline', expiry: meta.expiry || undefined, notes: meta.notes || undefined,
+      uploadedAt: new Date().toISOString(), uploadedBy: actorRef.current,
+    };
+    let att: Attachment;
+    if (cloud && supabase) {
+      const path = `${entityType}/${entityId}/${base.id}-${file.name.replace(/[^\w.-]+/g, '_')}`;
+      const { error } = await supabase.storage.from('documents').upload(path, file, { contentType: base.mime });
+      if (error) throw new Error(/row-level|policy|permission/i.test(error.message) ? "You don't have permission to upload documents." : error.message);
+      att = { ...base, storage: 'cloud', path };
+    } else {
+      if (file.size > LOCAL_FILE_LIMIT) {
+        throw new Error('Files over 1 MB can only be stored when team mode (Supabase) is switched on.');
+      }
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('Could not read the file'));
+        reader.readAsDataURL(file);
+      });
+      att = { ...base, storage: 'inline', dataUrl };
+    }
+    setData((prev) => ({ ...prev, attachments: [att, ...prev.attachments] }));
+    return att;
+  }, [cloud, setData]);
+
+  const removeAttachment = useCallback(async (att: Attachment) => {
+    if (att.storage === 'cloud' && att.path && supabase) {
+      const { error } = await supabase.storage.from('documents').remove([att.path]);
+      if (error) throw new Error(error.message);
+    }
+    setData((prev) => ({ ...prev, attachments: prev.attachments.filter((a) => a.id !== att.id) }));
+  }, [setData]);
+
+  const attachmentUrl = useCallback(async (att: Attachment) => {
+    if (att.storage === 'inline') return att.dataUrl ?? null;
+    if (att.storage === 'cloud' && att.path && supabase) {
+      const { data: signed, error } = await supabase.storage.from('documents').createSignedUrl(att.path, 300);
+      if (error) throw new Error(error.message);
+      return signed.signedUrl;
+    }
+    return null;
+  }, []);
+
+  const raiseNcr = useCallback((input: Partial<Ncr> & Pick<Ncr, 'title'>) => {
+    const ncr: Ncr = {
+      id: uid(), number: nextNumber('ncrs'), description: '', category: 'Vehicle safety', source: 'Internal', severity: 'major',
+      likelihood: 3, impact: 3, status: 'open', raisedBy: actorRef.current, raisedAt: todayISO(), dueDate: addDays(todayISO(), 14),
+      owner: '', containment: '', whys: ['', '', '', '', ''], rootCause: '', actions: [], verificationMethod: '', verificationResult: '',
+      ...input,
+    };
+    setData((prev) => ({ ...prev, ncrs: [ncr, ...prev.ncrs] }));
+    return ncr;
+  }, [nextNumber, setData]);
+
+  // Bulk replacements skip the history logger – they aren't edits to individual items.
+  const replaceAll = useCallback((next: AppData) => setRawData(normalize(next)), []);
+  const resetDemo = useCallback(() => setRawData(createSeed()), []);
+  const clearAll = useCallback(() => setRawData((prev) => emptyData(prev.settings)), []);
 
   const sync = useMemo<SyncState>(() => ({
     mode: cloud ? 'cloud' : 'local', status, saving: pending > 0, error: syncError,
   }), [cloud, status, pending, syncError]);
 
   const value = useMemo<Store>(() => ({
-    data, upsert, remove, updateSettings, submitCheck, createWorkOrderFromDefect, setWorkOrderStatus,
-    nextWorkOrderNumber, replaceAll, resetDemo, clearAll, sync, reload,
-  }), [data, upsert, remove, updateSettings, submitCheck, createWorkOrderFromDefect, setWorkOrderStatus,
-    nextWorkOrderNumber, replaceAll, resetDemo, clearAll, sync, reload]);
+    data, upsert, remove, updateSettings, submitCheck, createWorkOrderFromDefect, setWorkOrderStatus, nextNumber,
+    nextWorkOrderNumber, addNote, saveReminder, completeReminder, addAttachment, removeAttachment, attachmentUrl, raiseNcr,
+    actor, replaceAll, resetDemo, clearAll, sync, reload,
+  }), [data, upsert, remove, updateSettings, submitCheck, createWorkOrderFromDefect, setWorkOrderStatus, nextNumber,
+    nextWorkOrderNumber, addNote, saveReminder, completeReminder, addAttachment, removeAttachment, attachmentUrl, raiseNcr,
+    actor, replaceAll, resetDemo, clearAll, sync, reload]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

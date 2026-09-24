@@ -1,29 +1,52 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Bell, CalendarDays, ClipboardCheck, Fuel, Gauge, LayoutDashboard, Menu, Moon, Package, Search,
+  Bell, BellRing, CalendarDays, ClipboardCheck, Fuel, Gauge, LayoutDashboard, Menu, Moon, Package, Search,
   Settings as SettingsIcon, Sun, TriangleAlert, Truck, Users, Wrench, BarChart3, CalendarClock,
-  ShieldCheck, LogOut, Cloud, CloudOff, HardDrive, Loader2,
+  ShieldCheck, LogOut, Cloud, CloudOff, HardDrive, Loader2, FileWarning, FileSearch, BadgeCheck, CornerDownLeft, Plus, Command,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { useAuth, usePermissions } from '../auth';
 import { buildAlerts } from '../lib/alerts';
 import { ROLES } from '../lib/permissions';
+import { complianceScore } from '../lib/compliance';
 
-const NAV = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/vehicles', label: 'Vehicles & assets', icon: Truck },
-  { to: '/maintenance', label: 'Service schedules', icon: CalendarClock },
-  { to: '/work-orders', label: 'Work orders', icon: Wrench },
-  { to: '/checks', label: 'Pre-start checks', icon: ClipboardCheck },
-  { to: '/defects', label: 'Defects', icon: TriangleAlert },
-  { to: '/parts', label: 'Parts inventory', icon: Package },
-  { to: '/drivers', label: 'Drivers', icon: Users },
-  { to: '/fuel', label: 'Fuel log', icon: Fuel },
-  { to: '/calendar', label: 'Calendar', icon: CalendarDays },
-  { to: '/reports', label: 'Reports', icon: BarChart3 },
-  { to: '/settings', label: 'Settings', icon: SettingsIcon },
-  { to: '/admin', label: 'Admin panel', icon: ShieldCheck, adminOnly: true },
+type NavItem = { to: string; label: string; icon: typeof Truck; end?: boolean; adminOnly?: boolean; count?: (d: ReturnType<typeof useStore>['data']) => number; bad?: boolean };
+
+const NAV: { group: string; items: NavItem[] }[] = [
+  { group: '', items: [{ to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true }] },
+  {
+    group: 'Operations', items: [
+      { to: '/vehicles', label: 'Vehicles & assets', icon: Truck },
+      { to: '/work-orders', label: 'Work orders', icon: Wrench, count: (d) => d.workOrders.filter((w) => w.status !== 'completed').length },
+      { to: '/maintenance', label: 'Service schedules', icon: CalendarClock },
+      { to: '/checks', label: 'Pre-start checks', icon: ClipboardCheck },
+      { to: '/defects', label: 'Defects', icon: TriangleAlert, count: (d) => d.defects.filter((x) => x.status === 'open').length, bad: true },
+      { to: '/parts', label: 'Parts inventory', icon: Package },
+      { to: '/drivers', label: 'Drivers', icon: Users },
+      { to: '/fuel', label: 'Fuel log', icon: Fuel },
+    ],
+  },
+  {
+    group: 'Compliance', items: [
+      { to: '/compliance', label: 'Compliance hub', icon: BadgeCheck },
+      { to: '/ncr', label: 'NCRs', icon: FileWarning, count: (d) => d.ncrs.filter((n) => n.status !== 'closed').length },
+      { to: '/audits', label: 'Audits', icon: FileSearch, count: (d) => d.audits.filter((a) => a.status !== 'completed').length },
+    ],
+  },
+  {
+    group: 'Insights', items: [
+      { to: '/reminders', label: 'Reminders', icon: BellRing, count: (d) => d.reminders.filter((r) => !r.done).length },
+      { to: '/calendar', label: 'Calendar', icon: CalendarDays },
+      { to: '/reports', label: 'Reports', icon: BarChart3 },
+    ],
+  },
+  {
+    group: 'Workspace', items: [
+      { to: '/settings', label: 'Settings', icon: SettingsIcon },
+      { to: '/admin', label: 'Admin panel', icon: ShieldCheck, adminOnly: true },
+    ],
+  },
 ];
 
 type Theme = 'light' | 'dark';
@@ -41,17 +64,24 @@ export function Layout({ children }: { children: ReactNode }) {
   const { isAdmin } = usePermissions();
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [navOpen, setNavOpen] = useState(false);
+  const [palette, setPalette] = useState(false);
   const location = useLocation();
+  const score = useMemo(() => complianceScore(data), [data]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     try { localStorage.setItem('torqline:theme', theme); } catch { /* ignore */ }
   }, [theme]);
 
-  useEffect(() => setNavOpen(false), [location.pathname]);
+  useEffect(() => { setNavOpen(false); window.scrollTo({ top: 0 }); }, [location.pathname]);
 
-  const openDefects = data.defects.filter((d) => d.status === 'open').length;
-  const activeWOs = data.workOrders.filter((w) => w.status !== 'completed').length;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((p) => !p); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   return (
     <div className={`shell ${navOpen ? 'nav-open' : ''}`}>
@@ -64,14 +94,26 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
         </div>
         <nav>
-          {NAV.filter((n) => !('adminOnly' in n) || isAdmin).map(({ to, label, icon: Icon, end }) => (
-            <NavLink key={to} to={to} end={end} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <Icon size={18} />
-              <span>{label}</span>
-              {to === '/defects' && openDefects > 0 && <span className="nav-count bad">{openDefects}</span>}
-              {to === '/work-orders' && activeWOs > 0 && <span className="nav-count">{activeWOs}</span>}
-            </NavLink>
-          ))}
+          {NAV.map((g) => {
+            const items = g.items.filter((n) => !n.adminOnly || isAdmin);
+            if (!items.length) return null;
+            return (
+              <div key={g.group || 'main'} className="nav-group">
+                {g.group && <div className="nav-group-label">{g.group}</div>}
+                {items.map(({ to, label, icon: Icon, end, count, bad }) => {
+                  const n = count?.(data) ?? 0;
+                  return (
+                    <NavLink key={to} to={to} end={end} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                      <Icon size={18} />
+                      <span>{label}</span>
+                      {to === '/compliance' && <span className={`nav-score grade-${score.grade}`}>{score.score}</span>}
+                      {n > 0 && <span className={`nav-count ${bad ? 'bad' : ''}`}>{n}</span>}
+                    </NavLink>
+                  );
+                })}
+              </div>
+            );
+          })}
         </nav>
         <UserBox />
       </aside>
@@ -79,23 +121,101 @@ export function Layout({ children }: { children: ReactNode }) {
       <div className="main">
         <header className="topbar">
           <button className="icon-btn only-mobile" onClick={() => setNavOpen(true)} aria-label="Open menu"><Menu size={20} /></button>
-          <GlobalSearch />
+          <button className="search-trigger" onClick={() => setPalette(true)}>
+            <Search size={16} /><span>Search or jump to…</span><kbd><Command size={11} />K</kbd>
+          </button>
           <div className="row gap-sm">
             <SyncBadge sync={sync} />
             <AlertsBell />
-            <button className="icon-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              aria-label="Toggle dark mode" title="Toggle dark mode">
+            <button className="icon-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Toggle dark mode" title="Toggle dark mode">
               {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
             </button>
           </div>
         </header>
-        <main className="content">
+        <main className="content" key={location.pathname}>
           {sync.error && sync.status === 'ready' && <div className="banner tone-bad">Last change was not saved: {sync.error}</div>}
           {sync.mode === 'cloud' && isAdmin && data.vehicles.length === 0 && location.pathname === '/' && (
             <div className="banner tone-info">Your shared workspace is empty. Add your first vehicle, or go to <NavLink className="link" to="/admin">Admin panel → Data</NavLink> to load demo data.</div>
           )}
           {children}
         </main>
+      </div>
+      {palette && <CommandPalette onClose={() => setPalette(false)} />}
+    </div>
+  );
+}
+
+interface PaletteItem { key: string; group: string; label: string; hint?: string; to: string; icon: ReactNode }
+
+function CommandPalette({ onClose }: { onClose: () => void }) {
+  const { data } = useStore();
+  const perm = usePermissions();
+  const navigate = useNavigate();
+  const [q, setQ] = useState('');
+  const [sel, setSel] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => inputRef.current?.focus(), []);
+
+  const items = useMemo<PaletteItem[]>(() => {
+    const s = q.trim().toLowerCase();
+    const actions: PaletteItem[] = [
+      perm.canWrite('workOrders') && { key: 'a-wo', group: 'Actions', label: 'New work order', to: '/work-orders/new', icon: <Plus size={15} /> },
+      perm.canWrite('checks') && { key: 'a-check', group: 'Actions', label: 'Start a pre-start check', to: '/checks/new', icon: <Plus size={15} /> },
+      perm.canWrite('defects') && { key: 'a-def', group: 'Actions', label: 'Report a defect', to: '/defects/new', icon: <Plus size={15} /> },
+      perm.canWrite('ncrs') && { key: 'a-ncr', group: 'Actions', label: 'Raise an NCR', to: '/ncr/new', icon: <Plus size={15} /> },
+      perm.canWrite('audits') && { key: 'a-aud', group: 'Actions', label: 'Schedule an audit', to: '/audits/new', icon: <Plus size={15} /> },
+      perm.canWrite('fuel') && { key: 'a-fuel', group: 'Actions', label: 'Add a fuel fill', to: '/fuel/new', icon: <Plus size={15} /> },
+      perm.canManage && { key: 'a-veh', group: 'Actions', label: 'Add a vehicle', to: '/vehicles/new', icon: <Plus size={15} /> },
+    ].filter(Boolean) as PaletteItem[];
+    const pages: PaletteItem[] = NAV.flatMap((g) => g.items.filter((n) => !n.adminOnly || perm.isAdmin).map((n) => ({ key: `p-${n.to}`, group: 'Pages', label: n.label, to: n.to, icon: <n.icon size={15} /> })));
+    const hit = (...f: (string | number | undefined)[]) => !s || f.some((x) => String(x ?? '').toLowerCase().includes(s));
+    const records: PaletteItem[] = s.length < 2 ? [] : [
+      ...data.vehicles.filter((v) => hit(v.rego, v.name, v.make, v.model, v.vin)).map((v) => ({ key: v.id, group: 'Vehicles', label: `${v.rego} · ${v.name}`, hint: `${v.make} ${v.model}`, to: `/vehicles/${v.id}`, icon: <Truck size={15} /> })),
+      ...data.workOrders.filter((w) => hit(w.number, w.title, w.assignee)).map((w) => ({ key: w.id, group: 'Work orders', label: `#${w.number} ${w.title}`, hint: w.status, to: `/work-orders/${w.id}`, icon: <Wrench size={15} /> })),
+      ...data.ncrs.filter((n) => hit(`ncr-${n.number}`, n.number, n.title)).map((n) => ({ key: n.id, group: 'NCRs', label: `NCR-${n.number} ${n.title}`, hint: n.status, to: `/ncr/${n.id}`, icon: <FileWarning size={15} /> })),
+      ...data.audits.filter((a) => hit(`aud-${a.number}`, a.title, a.type)).map((a) => ({ key: a.id, group: 'Audits', label: `AUD-${a.number} ${a.title}`, hint: a.status, to: `/audits/${a.id}`, icon: <FileSearch size={15} /> })),
+      ...data.drivers.filter((d) => hit(d.name, d.email, d.phone)).map((d) => ({ key: d.id, group: 'Drivers', label: d.name, hint: d.depot, to: `/drivers/${d.id}`, icon: <Users size={15} /> })),
+      ...data.parts.filter((p) => hit(p.sku, p.name, p.supplier)).map((p) => ({ key: p.id, group: 'Parts', label: p.name, hint: `${p.sku} · ${p.qty} in stock`, to: `/parts/${p.id}`, icon: <Package size={15} /> })),
+      ...data.defects.filter((d) => hit(d.item, d.description)).map((d) => ({ key: d.id, group: 'Defects', label: d.item, hint: d.description, to: `/defects/${d.id}`, icon: <TriangleAlert size={15} /> })),
+    ].slice(0, 25);
+    return [...records, ...actions.filter((a) => hit(a.label)), ...pages.filter((p) => hit(p.label))];
+  }, [q, data, perm]);
+
+  useEffect(() => setSel(0), [q]);
+  const go = (it?: PaletteItem) => { if (it) { navigate(it.to); onClose(); } };
+  let lastGroup = '';
+
+  return (
+    <div className="palette-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="palette" role="dialog" aria-label="Command palette">
+        <div className="palette-input">
+          <Search size={18} />
+          <input ref={inputRef} value={q} placeholder="Search vehicles, jobs, NCRs, drivers… or type an action" onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') onClose();
+              if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => Math.min(items.length - 1, s + 1)); }
+              if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => Math.max(0, s - 1)); }
+              if (e.key === 'Enter') go(items[sel]);
+            }} />
+          <kbd>Esc</kbd>
+        </div>
+        <div className="palette-list">
+          {items.length === 0 && <div className="palette-empty muted">No matches for “{q}”</div>}
+          {items.map((it, i) => {
+            const header = it.group !== lastGroup ? <div className="palette-group">{it.group}</div> : null;
+            lastGroup = it.group;
+            return (
+              <div key={it.group + it.key}>
+                {header}
+                <button className={`palette-item ${i === sel ? 'sel' : ''}`} onMouseEnter={() => setSel(i)} onClick={() => go(it)}>
+                  <span className="palette-icon">{it.icon}</span>
+                  <span className="grow">{it.label}{it.hint && <span className="small muted"> · {it.hint}</span>}</span>
+                  {i === sel && <CornerDownLeft size={14} className="muted" />}
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -107,65 +227,6 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, onOut: () => 
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, [ref, onOut]);
-}
-
-function GlobalSearch() {
-  const { data } = useStore();
-  const [q, setQ] = useState('');
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const navigate = useNavigate();
-  useClickOutside(ref, () => setOpen(false));
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        inputRef.current?.focus();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-
-  const results = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (s.length < 2) return [];
-    const hit = (...fields: (string | number | undefined)[]) => fields.some((f) => String(f ?? '').toLowerCase().includes(s));
-    return [
-      ...data.vehicles.filter((v) => hit(v.rego, v.name, v.make, v.model, v.vin))
-        .map((v) => ({ key: v.id, group: 'Vehicle', label: `${v.rego} · ${v.name}`, to: `/vehicles/${v.id}` })),
-      ...data.workOrders.filter((w) => hit(w.number, w.title, w.assignee))
-        .map((w) => ({ key: w.id, group: 'Work order', label: `#${w.number} ${w.title}`, to: `/work-orders?open=${w.id}` })),
-      ...data.parts.filter((p) => hit(p.sku, p.name, p.supplier))
-        .map((p) => ({ key: p.id, group: 'Part', label: `${p.sku} · ${p.name}`, to: `/parts?q=${encodeURIComponent(p.sku)}` })),
-      ...data.drivers.filter((d) => hit(d.name, d.email, d.phone))
-        .map((d) => ({ key: d.id, group: 'Driver', label: d.name, to: `/drivers?q=${encodeURIComponent(d.name)}` })),
-    ].slice(0, 10);
-  }, [q, data]);
-
-  const go = (to: string) => { navigate(to); setQ(''); setOpen(false); };
-
-  return (
-    <div className="global-search" ref={ref}>
-      <Search size={16} className="global-search-icon" />
-      <input ref={inputRef} className="input" placeholder="Search vehicles, work orders, parts, drivers…  (Ctrl K)"
-        value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)}
-        onKeyDown={(e) => e.key === 'Enter' && results[0] && go(results[0].to)} />
-      {open && q.trim().length >= 2 && (
-        <div className="popover">
-          {results.length === 0 && <div className="popover-empty muted">No matches</div>}
-          {results.map((r) => (
-            <button key={r.group + r.key} className="popover-item" onClick={() => go(r.to)}>
-              <span className="muted small">{r.group}</span>
-              <span>{r.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 function AlertsBell() {
@@ -187,7 +248,7 @@ function AlertsBell() {
         <div className="popover popover-right">
           <div className="popover-title">Needs attention</div>
           {alerts.length === 0 && <div className="popover-empty muted">All clear 🎉</div>}
-          {alerts.slice(0, 12).map((a) => (
+          {alerts.slice(0, 14).map((a) => (
             <button key={a.id} className="popover-item" onClick={() => { navigate(a.to); setOpen(false); }}>
               <span className={`small tone-text-${a.level}`}>{a.kind}</span>
               <span>{a.text}</span>
@@ -205,7 +266,7 @@ function SyncBadge({ sync }: { sync: ReturnType<typeof useStore>['sync'] }) {
   }
   if (sync.saving) return <span className="sync-badge tone-info"><Loader2 size={14} className="spin" /> <span className="hide-sm">Saving…</span></span>;
   if (sync.error) return <span className="sync-badge tone-bad" title={sync.error}><CloudOff size={14} /> <span className="hide-sm">Not saved</span></span>;
-  return <span className="sync-badge tone-good" title="Changes save and sync live"><Cloud size={14} /> <span className="hide-sm">Live</span></span>;
+  return <span className="sync-badge tone-good" title="Changes save and sync live"><span className="live-dot" /><Cloud size={14} /> <span className="hide-sm">Live</span></span>;
 }
 
 function UserBox() {

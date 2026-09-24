@@ -47,9 +47,7 @@ export default function Drivers() {
                   </div>
                   <Badge value={worst} label={worst === 'ok' ? 'Compliant' : worst === 'overdue' ? 'Expired docs' : 'Expiring'} />
                 </div>
-                <div className="doc-pills">
-                  {docs.map(([name, exp]) => <span key={name} className={`doc-pill tone-${toneOf(exp)}`} title={`${name}: ${fmtDate(exp)}`}>{name}</span>)}
-                </div>
+                <ComplianceTimeline docs={docs} />
                 <div className="small muted">
                   {vehicles.length ? `Drives ${vehicles.map((v) => v.rego).join(', ')}` : 'No assigned vehicle'} · {checks.length} pre-starts
                   {checks.length > 0 && ` · ${Math.round((checks.filter((c) => c.passed).length / checks.length) * 100)}% pass`}
@@ -60,6 +58,38 @@ export default function Drivers() {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Every licence, medical and ticket on one shared axis from today to a year out,
+ * so a glance at the card shows what expires next and what already has.
+ */
+function ComplianceTimeline({ docs }: { docs: [string, string][] }) {
+  const sorted = [...docs].sort((a, b) => a[1].localeCompare(b[1]));
+  return (
+    <div className="ctl">
+      <div className="ctl-axis" aria-hidden><span /><span className="ctl-axis-track"><i style={{ left: '14%' }}>Today</i><i style={{ left: '56.5%' }}>6 mo</i><i style={{ left: '100%' }}>1 yr</i></span><span /></div>
+      <ul>
+        {sorted.map(([name, exp]) => {
+          const n = daysUntil(exp);
+          // -60 days … 0 … 365+ days mapped onto the bar; today sits at 14%.
+          const pos = n < 0 ? Math.max(1, 14 + (n / 60) * 13) : Math.min(99, 14 + (n / 365) * 85);
+          const tone = toneOf(exp);
+          return (
+            <li key={name} className={`ctl-${tone}`}>
+              <span className="ctl-name" title={name}>{name}</span>
+              <span className="ctl-track">
+                <span className="ctl-today" />
+                <span className={`ctl-fill tone-${tone}`} style={{ width: `${pos}%` }} />
+                <span className={`ctl-dot tone-${tone}`} style={{ left: `${pos}%` }} />
+              </span>
+              <span className={`ctl-when tone-text-${tone}`}>{n < 0 ? `${-n}d ago` : n === 0 ? 'today' : n < 60 ? `${n}d` : n < 365 ? `${Math.round(n / 30)} mo` : `${(n / 365).toFixed(1)} yr`}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

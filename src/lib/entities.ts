@@ -47,7 +47,8 @@ export function findEntity(data: AppData, type: EntityType, id: string): AnyItem
 }
 
 export function entityLink(type: EntityType, id: string) {
-  return `${ENTITIES[type].route}/${id}`;
+  // Fuel fills are simple log entries without their own page.
+  return type === 'fuel' ? ENTITIES.fuel.route : `${ENTITIES[type].route}/${id}`;
 }
 
 export function entityTitle(data: AppData, type: EntityType, id: string) {

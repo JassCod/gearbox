@@ -4,7 +4,7 @@ Torqline is a web app for running a vehicle and equipment fleet. It supports **t
 
 ## Features
 
-**Every record has its own page.** Vehicles, work orders, defects, parts, drivers, service schedules, pre-start checks, fuel fills, NCRs and audits each open as a full page with a header banner and tabs. Four tabs come with every item:
+**Every record has its own page.** Vehicles, work orders, defects, parts, drivers, service schedules, pre-start checks, NCRs and audits each open as a full page (fuel fills are quick entries added straight into the fuel log) with a header banner and tabs. Four tabs come with every item:
 
 | Tab | What it does |
 | --- | --- |
@@ -17,12 +17,12 @@ Torqline is a web app for running a vehicle and equipment fleet. It supports **t
 
 | Area | What you can do |
 | --- | --- |
-| **Dashboard** | A greeting with a one-line summary, the compliance score gauge, KPI tiles with count-up numbers, fleet health, spend, services due, reminders due, open NCRs and a "needs attention" feed |
+| **Dashboard** | A live fleet board (every asset as a tile in its depot lane, lit by health, with a clock, compliance gauge and pre-start coverage ring), KPI tiles with count-up numbers, fleet health, spend, services due, reminders due, open NCRs and a "needs attention" feed |
 | **Vehicles** | Card or table view with a health filter. Vehicle pages have Overview, Maintenance, Fuel & costs (cost per km, economy chart), Defects & checks and Compliance tabs |
 | **Work orders** | A Kanban board. Job pages have a status stepper, task checklist (standard templates for services, tyres and inspections), parts & labour costing and a printable job card |
 | **Schedules** | Service intervals by km, hours or days, with progress rings, service history and one-click booking |
 | **Pre-starts & defects** | A full-page walk-around checklist with signature. Faults become defects automatically; repeat defects are flagged, and critical defects take the vehicle off the road |
-| **Parts, drivers, fuel** | Stock gauges and receiving stock; licence, medical and training timelines; fuel economy per tank with anomaly warnings |
+| **Parts, drivers, fuel** | Stock gauges and receiving stock; every driver card shows a licence / medical / training timeline at a glance; an inline quick-add panel in the fuel log |
 
 **Compliance**
 
@@ -37,7 +37,7 @@ Torqline is a web app for running a vehicle and equipment fleet. It supports **t
 - An alerts bell collects expiries, overdue items, reminders and NCRs.
 - Calendar, reports, dark mode and phone layout.
 - Celebration confetti when a job, NCR or audit is closed out.
-- An animated login page.
+- A real-time 3D login scene (Three.js): a truck drives a dusk highway past street lights and oncoming traffic, and the sign-in form floats in the scene as a glass heads-up display.
 
 **Team mode** adds email/password logins with admin approval, five roles enforced by the database, live sync between users, file storage for documents, and the admin panel (users, activity log, role overview, backups).
 

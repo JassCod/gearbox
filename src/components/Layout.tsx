@@ -172,7 +172,7 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
       perm.canWrite('defects') && { key: 'a-def', group: 'Actions', label: 'Report a defect', to: '/defects/new', icon: <Plus size={15} /> },
       perm.canWrite('ncrs') && { key: 'a-ncr', group: 'Actions', label: 'Raise an NCR', to: '/ncr/new', icon: <Plus size={15} /> },
       perm.canWrite('audits') && { key: 'a-aud', group: 'Actions', label: 'Schedule an audit', to: '/audits/new', icon: <Plus size={15} /> },
-      perm.canWrite('fuel') && { key: 'a-fuel', group: 'Actions', label: 'Add a fuel fill', to: '/fuel/new', icon: <Plus size={15} /> },
+      perm.canWrite('fuel') && { key: 'a-fuel', group: 'Actions', label: 'Add a fuel fill', to: '/fuel?add=1', icon: <Plus size={15} /> },
       perm.canManage && { key: 'a-veh', group: 'Actions', label: 'Add a vehicle', to: '/vehicles/new', icon: <Plus size={15} /> },
     ].filter(Boolean) as PaletteItem[];
     const pages: PaletteItem[] = NAV.flatMap((g) => g.items.filter((n) => !n.adminOnly || perm.isAdmin).map((n) => ({ key: `p-${n.to}`, group: 'Pages', label: n.label, to: n.to, icon: <n.icon size={15} /> })));

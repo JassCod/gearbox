@@ -226,13 +226,13 @@ export default function VehicleDetail() {
                   <p className="small muted">Total cost of ownership logged: <b>{fmtMoney(stats.maint + stats.fuelCost, cur)}</b></p>
                 </Card>
               </div>
-              <Card title="Fuel fills" actions={perm.canWrite('fuel') && <Link className="btn btn-sm" to={`/fuel/new?vehicle=${v.id}`}><Plus size={14} /> Add fill</Link>}>
+              <Card title="Fuel fills" actions={perm.canWrite('fuel') && <Link className="btn btn-sm" to={`/fuel?add=1&vehicle=${v.id}`}><Plus size={14} /> Add fill</Link>}>
                 {stats.fuel.length === 0 ? <Empty title="No fuel fills recorded" /> : (
                   <div className="table-wrap">
                     <table className="table">
                       <thead><tr><th>Date</th><th>Station</th><th className="num">Odometer</th><th className="num">Litres</th><th className="num">Cost</th></tr></thead>
                       <tbody>{[...stats.fuel].reverse().map((f) => (
-                        <tr key={f.id} className="clickable" onClick={() => navigate(`/fuel/${f.id}`)}><td>{fmtDate(f.date)}</td><td>{f.station}</td><td className="num">{f.odometer ? fmtNum(f.odometer) : '—'}</td><td className="num">{fmtNum(f.litres)}</td><td className="num">{fmtMoney(f.cost, cur)}</td></tr>
+                        <tr key={f.id}><td>{fmtDate(f.date)}</td><td>{f.station}</td><td className="num">{f.odometer ? fmtNum(f.odometer) : '—'}</td><td className="num">{fmtNum(f.litres)}</td><td className="num">{fmtMoney(f.cost, cur)}</td></tr>
                       ))}</tbody>
                     </table>
                   </div>

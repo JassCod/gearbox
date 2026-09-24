@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { Eye, EyeOff, Gauge, LogOut, RefreshCw, ShieldCheck, Sparkles, Wrench } from 'lucide-react';
 import { appUrl, supabase } from '../lib/supabase';
 import { useAuth } from '../auth';
@@ -24,93 +24,52 @@ function Typewriter() {
   return <span className="typewriter">{WORDS[i % WORDS.length].slice(0, len)}<span className="caret" /></span>;
 }
 
-function Gear({ size, teeth, className }: { size: number; teeth: number; className: string }) {
-  const r = size / 2; const inner = r * 0.78; const hole = r * 0.3;
-  const pts: string[] = [];
-  for (let t = 0; t < teeth * 2; t++) {
-    const a = (t / (teeth * 2)) * Math.PI * 2;
-    const rad = t % 2 === 0 ? r : inner;
-    const a2 = a + Math.PI / teeth;
-    pts.push(`${r + rad * Math.cos(a)},${r + rad * Math.sin(a)}`, `${r + rad * Math.cos(a2)},${r + rad * Math.sin(a2)}`);
-  }
-  return (
-    <svg className={`gear ${className}`} width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
-      <polygon points={pts.join(' ')} />
-      <circle cx={r} cy={r} r={hole} className="gear-hole" />
-    </svg>
-  );
-}
+const LoginScene = lazy(() => import('../components/LoginScene'));
 
-function TruckSvg({ className }: { className: string }) {
-  return (
-    <svg className={`truck ${className}`} viewBox="0 0 120 50" aria-hidden>
-      <rect x="2" y="8" width="72" height="30" rx="3" className="t-box" />
-      <path d="M76 16 h22 l14 12 v10 h-36 z" className="t-cab" />
-      <rect x="84" y="19" width="12" height="8" rx="1.5" className="t-window" />
-      <circle cx="20" cy="41" r="7" className="t-wheel" /><circle cx="20" cy="41" r="2.5" className="t-hub" />
-      <circle cx="56" cy="41" r="7" className="t-wheel" /><circle cx="56" cy="41" r="2.5" className="t-hub" />
-      <circle cx="98" cy="41" r="7" className="t-wheel" /><circle cx="98" cy="41" r="2.5" className="t-hub" />
-      <rect x="108" y="30" width="5" height="3" rx="1" className="t-light" />
-      <text x="10" y="28" className="t-label">TORQLINE</text>
-    </svg>
-  );
-}
-
-function FleetScene() {
-  return (
-    <div className="scene" aria-hidden>
-      <div className="stars" />
-      <div className="sun" />
-      <svg className="skyline" viewBox="0 0 600 120" preserveAspectRatio="none">
-        <path d="M0 120 V70 h30 v-20 h20 v30 h25 v-45 h18 v45 h22 v-25 h30 v35 h20 v-60 h12 v-10 h8 v10 h12 v60 h25 v-30 h28 v40 h20 v-55 h26 v55 h18 v-20 h30 v25 h24 v-40 h22 v40 h30 v-28 h20 v38 h26 v-18 h24 v18 h20 V120 z" />
-      </svg>
-      <div className="gears">
-        <Gear size={120} teeth={12} className="g1" />
-        <Gear size={78} teeth={9} className="g2" />
-        <Gear size={54} teeth={8} className="g3" />
-      </div>
-      <div className="float-card fc1"><span className="fc-dot good" /> Fleet health <b>96%</b></div>
-      <div className="float-card fc2"><span className="fc-dot violet" /> NCR-104 <b>closed ✓</b></div>
-      <div className="float-card fc3"><span className="fc-dot warn" /> TRK-102 service <b>in 3 days</b></div>
-      <div className="road">
-        <div className="road-dashes" />
-        <TruckSvg className="tr1" />
-        <TruckSvg className="tr2" />
-      </div>
-    </div>
-  );
-}
-
+/** The login form lives inside the 3D scene as a glass heads-up display that tilts with the pointer. */
 function AuthShell({ children, title, subtitle }: { children: React.ReactNode; title: string; subtitle?: string }) {
+  const [ready, setReady] = useState(false);
+  const onReady = useCallback(() => setReady(true), []);
+  const card = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      if (!card.current) return;
+      const x = e.clientX / window.innerWidth - 0.5; const y = e.clientY / window.innerHeight - 0.5;
+      card.current.style.setProperty('--ry', `${x * -7}deg`);
+      card.current.style.setProperty('--rx', `${y * 6}deg`);
+      card.current.style.setProperty('--gx', `${50 + x * 60}%`);
+    };
+    window.addEventListener('pointermove', move);
+    return () => window.removeEventListener('pointermove', move);
+  }, []);
   return (
-    <div className="auth-split">
-      <section className="auth-visual">
-        <FleetScene />
-        <div className="auth-pitch">
-          <div className="brand auth-brand light">
-            <span className="brand-mark"><Gauge size={20} /></span>
-            <div><strong>Torqline</strong><small>Fleet maintenance & compliance</small></div>
-          </div>
-          <h2>Keep every wheel<br /><Typewriter /></h2>
-          <ul className="auth-features">
-            <li><Wrench size={16} /> Work orders, services & parts in one flow</li>
-            <li><ShieldCheck size={16} /> NCRs, audits & a live compliance score</li>
-            <li><Sparkles size={16} /> Real-time for the whole team</li>
-          </ul>
+    <div className={`auth-stage ${ready ? 'ready' : ''}`}>
+      <div className="stage-backdrop" />
+      <Suspense fallback={null}><LoginScene onReady={onReady} /></Suspense>
+      <div className="stage-vignette" />
+      <header className="stage-brand">
+        <div className="brand auth-brand light">
+          <span className="brand-mark"><Gauge size={20} /></span>
+          <div><strong>Torqline</strong><small>Fleet maintenance & compliance</small></div>
         </div>
-      </section>
-      <section className="auth-panel">
-        <div className="auth-card glow">
-          <div className="brand auth-brand only-small">
-            <span className="brand-mark"><Gauge size={20} /></span>
-            <div><strong>Torqline</strong><small>Fleet maintenance</small></div>
-          </div>
+        <h2 className="stage-tagline">Keep every wheel<br /><Typewriter /></h2>
+        <div className="stage-tags">
+          <span><Wrench size={14} /> Work orders & services</span>
+          <span><ShieldCheck size={14} /> NCRs, audits & compliance</span>
+          <span><Sparkles size={14} /> Live for the whole team</span>
+        </div>
+      </header>
+      <main className="stage-card-wrap">
+        <div className="hud-card" ref={card}>
+          <span className="hud-corner tl" /><span className="hud-corner tr" /><span className="hud-corner bl" /><span className="hud-corner br" />
+          <div className="hud-glare" />
+          <div className="hud-status"><i /> Secure link · {new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</div>
           <h1>{title}</h1>
-          {subtitle && <p className="muted">{subtitle}</p>}
+          {subtitle && <p className="hud-sub">{subtitle}</p>}
           {children}
         </div>
-        <p className="auth-foot small muted">Protected by role-based access · © {new Date().getFullYear()} Torqline</p>
-      </section>
+      </main>
+      <footer className="stage-foot">Protected by role-based access · © {new Date().getFullYear()} Torqline</footer>
     </div>
   );
 }

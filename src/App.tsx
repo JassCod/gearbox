@@ -12,7 +12,7 @@ import Checks, { CheckDetail, NewCheck } from './pages/Checks';
 import Defects, { DefectDetail, NewDefect } from './pages/Defects';
 import Parts, { NewPart, PartDetail } from './pages/Parts';
 import Drivers, { DriverDetail, NewDriver } from './pages/Drivers';
-import FuelLog, { FuelDetail, NewFuel } from './pages/FuelLog';
+import FuelLog from './pages/FuelLog';
 import Ncrs, { NcrDetail, NewNcr } from './pages/Ncrs';
 import Audits, { AuditDetail, NewAudit } from './pages/Audits';
 import Compliance from './pages/Compliance';
@@ -93,8 +93,6 @@ function Workspace() {
         <Route path="/drivers/new" element={<NewDriver />} />
         <Route path="/drivers/:id" element={<DriverDetail />} />
         <Route path="/fuel" element={<FuelLog />} />
-        <Route path="/fuel/new" element={<NewFuel />} />
-        <Route path="/fuel/:id" element={<FuelDetail />} />
         <Route path="/compliance" element={<Compliance />} />
         <Route path="/ncr" element={<Ncrs />} />
         <Route path="/ncr/new" element={<NewNcr />} />

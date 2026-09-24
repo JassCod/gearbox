@@ -4,7 +4,9 @@ import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveCo
 import { ClipboardCheck, Package, TriangleAlert, Truck, Wrench, CalendarClock, ShieldAlert, Check } from 'lucide-react';
 import { useStore } from '../store';
 import { usePermissions } from '../auth';
-import { Badge, Card, HealthDot, StatCard } from '../components/ui';
+import { Badge, Card, HealthDot, PageHeader, StatCard } from '../components/ui';
+import { VehicleIcon } from '../components/icons';
+import { useEffect, useState } from 'react';
 import { ScoreGauge } from './Compliance';
 import { complianceScore, describeDue, riskLevel, riskScore } from '../lib/compliance';
 import { entityLink, entityTitle } from '../lib/entities';
@@ -14,7 +16,7 @@ import { byId, daysUntil, fmtDate, fmtMoney, parseISO, relDays, serviceDue, toda
 const HEALTH_COLORS = { green: 'var(--good)', amber: 'var(--warn)', red: 'var(--bad)' };
 
 export default function Dashboard() {
-  const { data, actor, completeReminder } = useStore();
+  const { data, completeReminder } = useStore();
   const navigate = useNavigate();
   const perm = usePermissions();
   const cur = data.settings.currency;
@@ -61,32 +63,19 @@ export default function Dashboard() {
   const compliance = useMemo(() => complianceScore(data), [data]);
   const openNcrs = data.ncrs.filter((n) => n.status !== 'closed').sort((a, b) => riskScore(b) - riskScore(a));
   const dueReminders = data.reminders.filter((r) => !r.done && daysUntil(r.dueDate) <= 7).sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, 6);
-  const firstName = (actor === 'You' ? '' : actor.split(' ')[0]) || 'there';
   const urgentCount = alerts.filter((a) => a.level === 'bad').length;
-  const summaryLine = urgentCount
-    ? `${urgentCount} thing${urgentCount > 1 ? 's' : ''} need${urgentCount > 1 ? '' : 's'} action today, ${openWOs.length} jobs are open and ${available} of ${data.vehicles.length} assets are on the road.`
-    : `Everything urgent is handled. ${available} of ${data.vehicles.length} assets are on the road and ${openWOs.length} jobs are open.`;
   const pie = (['green', 'amber', 'red'] as const).map((k) => ({ name: k, value: counts[k] })).filter((x) => x.value);
 
   return (
     <>
-      <section className="welcome">
-        <div className="welcome-art" aria-hidden><div className="orb o1" /><div className="orb o2" /><div className="road-line" /></div>
-        <div className="welcome-text">
-          <span className="welcome-date">{new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</span>
-          <h1>{greeting()}, {firstName}</h1>
-          <p>{summaryLine}</p>
-          <div className="row gap-sm wrap">
-            {perm.canWrite('checks') && <Link className="btn btn-glass" to="/checks/new"><ClipboardCheck size={16} /> New pre-start</Link>}
-            {perm.canWrite('workOrders') && <Link className="btn btn-light" to="/work-orders/new"><Wrench size={16} /> New work order</Link>}
-            {perm.canWrite('ncrs') && <Link className="btn btn-glass" to="/ncr/new"><ShieldAlert size={16} /> Raise NCR</Link>}
-          </div>
-        </div>
-        <Link to="/compliance" className="welcome-score" title="Compliance score">
-          <ScoreGauge score={compliance.score} grade={compliance.grade} size={170} />
-          <span>Compliance score</span>
-        </Link>
-      </section>
+      <PageHeader title="Fleet overview" subtitle={`${data.settings.companyName} · ${new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}`}
+        actions={<>
+          {perm.canWrite('checks') && <Link className="btn" to="/checks/new"><ClipboardCheck size={16} /> New pre-start</Link>}
+          {perm.canWrite('ncrs') && <Link className="btn" to="/ncr/new"><ShieldAlert size={16} /> Raise NCR</Link>}
+          {perm.canWrite('workOrders') && <Link className="btn btn-primary" to="/work-orders/new"><Wrench size={16} /> New work order</Link>}
+        </>} />
+
+      <FleetBoard compliance={compliance} checkedToday={checksToday.length} urgent={urgentCount} />
 
       <div className="stats">
         <StatCard label="Fleet availability" icon={<Truck size={18} />}
@@ -240,7 +229,65 @@ export default function Dashboard() {
   );
 }
 
-function greeting() {
-  const h = new Date().getHours();
-  return h < 5 ? 'Working late' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+function Clock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
+  return <span className="fb-clock">{now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>;
+}
+
+/**
+ * Control-room view of the whole fleet: one lane per depot, one tile per asset,
+ * lit by health. Red tiles pulse; hover for the reasons, click to open.
+ */
+function FleetBoard({ compliance, checkedToday, urgent }: { compliance: ReturnType<typeof complianceScore>; checkedToday: number; urgent: number }) {
+  const { data } = useStore();
+  const lanes = data.settings.depots.map((depot) => ({
+    depot,
+    vehicles: data.vehicles.filter((v) => v.depot === depot).map((v) => ({ v, h: vehicleHealth(v, data) }))
+      .sort((a, b) => ({ red: 0, amber: 1, green: 2 }[a.h.health] - { red: 0, amber: 1, green: 2 }[b.h.health])),
+  })).filter((l) => l.vehicles.length);
+  const unassigned = data.vehicles.filter((v) => !data.settings.depots.includes(v.depot));
+  if (unassigned.length) lanes.push({ depot: 'Other', vehicles: unassigned.map((v) => ({ v, h: vehicleHealth(v, data) })) });
+  const active = data.vehicles.filter((v) => v.status === 'active').length;
+  const coverage = active ? Math.min(1, checkedToday / active) : 0;
+  const r = 34; const c = 2 * Math.PI * r;
+
+  return (
+    <section className="fleet-board">
+      <div className="fb-grid" aria-hidden />
+      <header className="fb-head">
+        <div className="row gap-sm"><span className="fb-live"><i /> LIVE</span><strong>Fleet board</strong><span className="fb-sub">{data.vehicles.length} assets · {lanes.length} depots</span></div>
+        <div className="row gap-sm"><span className={`fb-alert ${urgent ? 'on' : ''}`}>{urgent ? `${urgent} need action` : 'All clear'}</span><Clock /></div>
+      </header>
+      <div className="fb-body">
+        <div className="fb-lanes">
+          {lanes.map((lane) => (
+            <div key={lane.depot} className="fb-lane">
+              <div className="fb-lane-head"><span>{lane.depot}</span><span className="fb-lane-count">{lane.vehicles.filter((x) => x.h.health === 'green').length}/{lane.vehicles.length} ready</span></div>
+              <div className="fb-tiles">
+                {lane.vehicles.map(({ v, h }, i) => (
+                  <Link key={v.id} to={`/vehicles/${v.id}`} className={`fb-tile fb-${h.health} fb-st-${v.status}`} style={{ animationDelay: `${i * 40}ms` }}
+                    title={`${v.rego} · ${v.name}\n${h.reasons.join('\n') || 'All good'}`}>
+                    <span className="fb-icon"><VehicleIcon type={v.type} size={18} /></span>
+                    <span className="fb-rego">{v.rego}</span>
+                    <span className="fb-state">{v.status === 'active' ? (h.health === 'green' ? 'Ready' : h.reasons[0]?.split(':')[0] ?? 'Check') : v.status === 'in-workshop' ? 'Workshop' : 'Off road'}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <aside className="fb-side">
+          <Link to="/compliance" className="fb-gauge">
+            <ScoreGauge score={compliance.score} grade={compliance.grade} size={150} />
+            <span>Compliance</span>
+          </Link>
+          <Link to="/checks" className="fb-ring">
+            <svg viewBox="0 0 80 80"><circle cx="40" cy="40" r={r} className="fb-ring-track" /><circle cx="40" cy="40" r={r} className="fb-ring-value" strokeDasharray={c} strokeDashoffset={c * (1 - coverage)} /></svg>
+            <div><strong>{checkedToday}/{active}</strong><span>pre-starts today</span></div>
+          </Link>
+        </aside>
+      </div>
+    </section>
+  );
 }

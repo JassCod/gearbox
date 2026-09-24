@@ -9,19 +9,20 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { buildTruck } from './truck';
 
 /**
- * A cinematic tracking shot at sunset: a PBR car cruises down a country highway,
- * filmed from a camera car driving alongside, while oncoming traffic, street lights
- * and roadside scenery stream past. The sky is physically based (Rayleigh/Mie
+ * A cinematic tracking shot at sunset: a Torqline prime mover and reefer trailer
+ * cruise down a country highway, filmed from a camera car driving alongside, while a
+ * car overtakes now and then and street lights and roadside scenery stream past. The sky is physically based (Rayleigh/Mie
  * scattering) and also lights the scene through a pre-filtered environment map.
  */
 
 const CAR_URL = `${import.meta.env.BASE_URL}assets/car.glb`;
 const LANE = 3.6;          // metres
 const PERIOD = 48;         // everything static repeats every 48 m, so the world can wrap seamlessly
-const HERO_SPEED = 22;     // m/s ≈ 80 km/h
-const ONCOMING_SPEED = 20; // m/s
+const HERO_SPEED = 25;     // m/s = 90 km/h
+const OVERTAKE_SPEED = 8;  // m/s faster than the truck
 
 type CarRig = { root: THREE.Object3D; wheels: THREE.Object3D[] };
 
@@ -44,7 +45,7 @@ export default function LoginScene({ onReady }: { onReady?: () => void }) {
     renderer.setPixelRatio(pixelRatio);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.0;
+    renderer.toneMappingExposure = 1.12;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     host.appendChild(renderer.domElement);
@@ -55,7 +56,7 @@ export default function LoginScene({ onReady }: { onReady?: () => void }) {
     const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 3000);
 
     // ---------- Sky: physical scattering, low sun behind the car ----------
-    const sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 + 0.8), THREE.MathUtils.degToRad(214));
+    const sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 + 0.6), THREE.MathUtils.degToRad(150));
     const makeSky = (scale: number) => {
       const s = new Sky();
       s.scale.setScalar(scale);
@@ -81,15 +82,16 @@ export default function LoginScene({ onReady }: { onReady?: () => void }) {
     const fogColor = new THREE.Color('#57506a');
     scene.fog = new THREE.FogExp2(fogColor, 0.0014);
 
-    const sun = new THREE.DirectionalLight('#ff9a5c', 0.8);
-    sun.position.set(sunDir.x, 0.09, sunDir.z).normalize().multiplyScalar(80);
+    const sun = new THREE.DirectionalLight('#ff9a5c', 0.6);
+    sun.position.set(sunDir.x, 0.09, sunDir.z).normalize().multiplyScalar(80).add(new THREE.Vector3(0, 0, -5));
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    Object.assign(sun.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10, near: 40, far: 140 });
+    Object.assign(sun.shadow.camera, { left: -13, right: 13, top: 13, bottom: -13, near: 40, far: 140 });
+    sun.target.position.set(0, 0, -5);
     sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.02;
     scene.add(sun, sun.target);
-    const skyFill = new THREE.DirectionalLight('#9fb2ff', 1.5); // twilight dome opposite the sunset
-    skyFill.position.set(6, 5, 9);
+    const skyFill = new THREE.DirectionalLight('#c3cbff', 1.3); // twilight dome opposite the sunset
+    skyFill.position.set(-8, 5, 10);
     scene.add(skyFill);
 
     // ---------- Texture helpers ----------
@@ -186,29 +188,29 @@ export default function LoginScene({ onReady }: { onReady?: () => void }) {
     ground.rotation.x = -Math.PI / 2; ground.position.set(0, -0.05, zMid - 100); ground.receiveShadow = true;
     world.add(ground);
 
-    // W-beam guardrail on galvanised posts along the far side
-    const railX = roadLeft - 2.2;
+    // W-beam guardrail on galvanised posts along the far side (the camera car runs on the other side)
+    const railX = roadRight + 2.2;
     const beam = new THREE.Shape();
     const prof: [number, number][] = [[0, 0], [0.03, 0.04], [0.0, 0.08], [0.03, 0.16], [0.0, 0.24], [0.03, 0.28], [0, 0.32]];
     beam.moveTo(prof[0][0], prof[0][1]); prof.slice(1).forEach(([x, y]) => beam.lineTo(x, y));
     [...prof].reverse().forEach(([x, y]) => beam.lineTo(x - 0.006, y));
     const railGeo = track(new THREE.ExtrudeGeometry(beam, { depth: LEN, bevelEnabled: false, steps: 1 }));
     const galv = track(new THREE.MeshStandardMaterial({ color: '#a8b0b4', metalness: 0.85, roughness: 0.42 }));
-    const rail = new THREE.Mesh(railGeo, galv); rail.position.set(railX, 0.55, Z0 - LEN); rail.castShadow = true; rail.receiveShadow = true;
+    const rail = new THREE.Mesh(railGeo, galv); rail.position.set(railX, 0.55, Z0 - LEN); rail.scale.x = -1; rail.castShadow = true; rail.receiveShadow = true;
     world.add(rail);
     const posts = new THREE.InstancedMesh(track(new THREE.BoxGeometry(0.1, 0.9, 0.15)), galv, LEN / 2);
-    for (let i = 0; i < LEN / 2; i++) posts.setMatrixAt(i, mtx.makeTranslation(railX - 0.08, 0.45, Z0 - i * 2));
+    for (let i = 0; i < LEN / 2; i++) posts.setMatrixAt(i, mtx.makeTranslation(railX + 0.08, 0.45, Z0 - i * 2));
     posts.castShadow = true; world.add(posts);
 
     // Amber delineators on every sixth guardrail post
     const reflectors = new THREE.InstancedMesh(track(new THREE.BoxGeometry(0.02, 0.12, 0.08)), track(new THREE.MeshStandardMaterial({ color: '#ffb347', emissive: '#ff9a1f', emissiveIntensity: 2.4 })), LEN / 12);
-    for (let i = 0; i < LEN / 12; i++) reflectors.setMatrixAt(i, mtx.makeTranslation(railX + 0.04, 0.78, Z0 - i * 12));
+    for (let i = 0; i < LEN / 12; i++) reflectors.setMatrixAt(i, mtx.makeTranslation(railX - 0.04, 0.78, Z0 - i * 12));
     world.add(reflectors);
 
     // Street lights on the far side, arms reaching over the road
     const poleMat = track(new THREE.MeshStandardMaterial({ color: '#7d8589', metalness: 0.8, roughness: 0.45 }));
     const lampLens = track(new THREE.MeshStandardMaterial({ color: '#fff3d6', emissive: '#ffe2ad', emissiveIntensity: 9 }));
-    const poleX = railX - 0.9;
+    const poleX = railX + 0.9;
     const armCurve = new THREE.QuadraticBezierCurve3(new THREE.Vector3(0, 8.2, 0), new THREE.Vector3(0, 9.6, 0), new THREE.Vector3(3.2, 9.4, 0));
     const lampParts = [
       new THREE.CylinderGeometry(0.08, 0.14, 8.4, 12).translate(0, 4.2, 0).toNonIndexed(),
@@ -220,7 +222,7 @@ export default function LoginScene({ onReady }: { onReady?: () => void }) {
     const lampPoolMat = track(new THREE.MeshBasicMaterial({ map: lightBlob, color: '#ffcf8a', transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }));
     const lampPoolGeo = track(new THREE.PlaneGeometry(11, 15).rotateX(-Math.PI / 2));
     for (let z = Z0; z > Z0 - LEN; z -= PERIOD) {
-      const g = new THREE.Group(); g.position.set(poleX, 0, z);
+      const g = new THREE.Group(); g.position.set(poleX, 0, z); g.rotation.y = Math.PI;
       const pole = new THREE.Mesh(lampGeo, poleMat); pole.castShadow = true;
       const lens = new THREE.Mesh(lampLensGeo, lampLens);
       const pool = new THREE.Mesh(lampPoolGeo, lampPoolMat); pool.position.set(3.45, 0.012, 0);
@@ -263,7 +265,7 @@ export default function LoginScene({ onReady }: { onReady?: () => void }) {
     const layout: { x: number; z: number; s: number; r: number; kind: number }[] = [];
     for (let k = 0; k < perTile * 2; k++) {
       const near = k < perTile;
-      const x = rand() < 0.5 ? roadRight + (near ? 10 : 30) + rand() * (near ? 14 : 70) : railX - (near ? 8 : 26) - rand() * (near ? 14 : 70);
+      const x = rand() < 0.5 ? railX + (near ? 8 : 26) + rand() * (near ? 14 : 70) : roadLeft - (near ? 16 : 30) - rand() * (near ? 14 : 70);
       layout.push({ x, z: rand() * PERIOD, s: 4 + rand() * 3.5, r: rand() * 3.14, kind: Math.floor(rand() * variants) });
     }
     const counts = new Array(variants).fill(0);
@@ -298,19 +300,27 @@ export default function LoginScene({ onReady }: { onReady?: () => void }) {
     terrain.position.set(0, 0, -1000);
     scene.add(terrain);
 
-    // ---------- Cars ----------
-    let hero: CarRig | null = null;
-    const oncoming: { rig: CarRig; z: number }[] = [];
+    // ---------- The truck (hero) ----------
+    const truck = buildTruck(track, aniso);
+    scene.add(truck.root);
+    const truckShadow = new THREE.Mesh(track(new THREE.PlaneGeometry(3.6, 19)), track(new THREE.MeshBasicMaterial({ map: softBlob, transparent: true, depthWrite: false, opacity: 0.85 })));
+    truckShadow.rotation.x = -Math.PI / 2; truckShadow.position.set(0, 0.006, -5.5); truckShadow.renderOrder = -1;
+    scene.add(truckShadow);
+
+    // ---------- A car that overtakes from time to time ----------
+    const passer = { rig: null as CarRig | null, z: -60, wait: 3, paint: 0, paints: [] as [THREE.MeshPhysicalMaterial, string][] };
+    const PALETTE = ['#b9bec4', '#7a0f14', '#1c2a44', '#13807a', '#e9e7e2'];
 
     const loader = new GLTFLoader();
     loader.setMeshoptDecoder(MeshoptDecoder);
     const readyTimer = window.setTimeout(() => onReady?.(), 9000);
     const finish = () => { window.clearTimeout(readyTimer); if (!disposed) onReady?.(); };
+    finish(); // the truck is procedural, so the scene is ready straight away
 
     loader.load(CAR_URL, (gltf) => {
-      const template = gltf.scene;
+      const root = gltf.scene;
       const shared = new Set<THREE.Material>();
-      template.traverse((o) => {
+      root.traverse((o) => {
         const m = o as THREE.Mesh;
         if (!m.isMesh) return;
         m.castShadow = true; m.receiveShadow = true;
@@ -319,8 +329,8 @@ export default function LoginScene({ onReady }: { onReady?: () => void }) {
       });
       shared.forEach((x) => {
         track(x);
-        const s = x as THREE.MeshStandardMaterial;
-        for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'] as const) { const t = s[k]; if (t) { t.anisotropy = aniso; track(t); } }
+        const st = x as THREE.MeshStandardMaterial;
+        for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'] as const) { const t = st[k]; if (t) { t.anisotropy = aniso; track(t); } }
       });
       if (disposed) { disposables.forEach((d) => d.dispose()); return; }
       const byName = (n: string) => [...shared].find((x) => x.name === n) as THREE.MeshPhysicalMaterial | undefined;
@@ -328,51 +338,29 @@ export default function LoginScene({ onReady }: { onReady?: () => void }) {
       const glass = track(new THREE.MeshPhysicalMaterial({ color: '#07090c', roughness: 0.04, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.02, envMapIntensity: 1.6 }));
       const head = byName('Headlight'); if (head) { head.emissive = new THREE.Color('#fff4e0'); head.emissiveIntensity = 6; }
       const brake = byName('Brakelight'); if (brake) { brake.emissive = new THREE.Color('#ff1a0a'); brake.emissiveIntensity = 3.5; }
-      const flakes = byName('Paint 1 Carmine')?.normalMap ?? null;
-
-      const build = (paint1: string, paint2: string, metal: number, rough: number): CarRig => {
-        const root = template.clone(true);
-        const p1 = track(new THREE.MeshPhysicalMaterial({ color: paint1, metalness: metal, roughness: rough, clearcoat: 1, clearcoatRoughness: 0.16, normalMap: flakes }));
-        p1.normalScale.set(0.15, 0.15);
-        const p2 = track(new THREE.MeshPhysicalMaterial({ color: paint2, metalness: 0.4, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1 }));
-        const swap = (x: THREE.Material) => (x.name === 'Glass' ? glass : x.name.startsWith('Paint 1') ? p1 : x.name.startsWith('Paint 2') ? p2 : x);
-        root.traverse((o) => {
-          const m = o as THREE.Mesh;
-          if (m.isMesh) m.material = Array.isArray(m.material) ? m.material.map(swap) : swap(m.material);
-        });
-        const wheels: THREE.Object3D[] = [];
-        root.traverse((o) => { if (/^Wheel(Front|Rear)[LR]$/.test(o.name)) wheels.push(o); });
-        const contact = new THREE.Mesh(track(new THREE.PlaneGeometry(2.9, 5.2)), track(new THREE.MeshBasicMaterial({ map: softBlob, transparent: true, depthWrite: false, opacity: 0.9 })));
-        contact.rotation.x = -Math.PI / 2; contact.position.set(0, 0.006, 0.24); contact.renderOrder = -1;
-        const rig = new THREE.Group(); rig.add(root, contact);
-        return { root: rig, wheels };
-      };
-
-      // Hero: deep teal metallic with a gloss-black roof, headlights on.
-      hero = build('#13807a', '#0b0d10', 0.45, 0.3);
-      scene.add(hero.root);
-      for (const x of [-0.62, 0.62]) {
-        const spot = new THREE.SpotLight('#fff1dc', 260, 70, 0.34, 0.55, 1.6);
-        spot.position.set(x, 0.72, 2.2); spot.target.position.set(x * 1.8, 0, 26);
-        hero.root.add(spot, spot.target);
-      }
-      // Soft light pool thrown ahead of oncoming cars (the hero's own spotlights light the road for real).
-      const poolGeo = track(new THREE.PlaneGeometry(5.5, 16));
-      const poolMat = track(new THREE.MeshBasicMaterial({ map: lightBlob, color: '#fff0d0', transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false }));
-
-      // Oncoming traffic in the other lane, facing -z.
-      const palette: [string, string, number, number][] = [['#b9bec4', '#15171a', 0.9, 0.28], ['#7a0f14', '#0c0c0e', 0.6, 0.3], ['#1c2a44', '#0c0c0e', 0.7, 0.3]];
-      palette.forEach((p, i) => {
-        const rig = build(...p);
-        rig.root.rotation.y = Math.PI;
-        const beamPool = new THREE.Mesh(poolGeo, poolMat); // their headlights on the road ahead of them
-        beamPool.rotation.x = -Math.PI / 2; beamPool.position.set(0, 0.01, 11);
-        rig.root.add(beamPool);
-        scene.add(rig.root);
-        oncoming.push({ rig, z: 60 + i * 190 });
+      const p1 = track(new THREE.MeshPhysicalMaterial({ color: PALETTE[0], metalness: 0.6, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.16, normalMap: byName('Paint 1 Carmine')?.normalMap ?? null }));
+      p1.normalScale.set(0.15, 0.15);
+      const p2 = track(new THREE.MeshPhysicalMaterial({ color: '#0c0d10', metalness: 0.4, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1 }));
+      const swap = (x: THREE.Material) => (x.name === 'Glass' ? glass : x.name.startsWith('Paint 1') ? p1 : x.name.startsWith('Paint 2') ? p2 : x);
+      root.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh) m.material = Array.isArray(m.material) ? m.material.map(swap) : swap(m.material);
       });
-      finish();
-    }, undefined, () => finish());
+      const wheels: THREE.Object3D[] = [];
+      root.traverse((o) => { if (/^Wheel(Front|Rear)[LR]$/.test(o.name)) wheels.push(o); });
+      for (const w of wheels) {
+        // The model ships with the front wheels steered; straighten every wheel so it spins true,
+        // and keep the brake callipers still while the wheel turns.
+        w.rotation.set(0, 0, 0);
+        w.children.filter((c) => /BrakePad/.test(c.name)).forEach((c) => w.parent?.attach(c));
+      }
+      const contact = new THREE.Mesh(track(new THREE.PlaneGeometry(2.9, 5.2)), track(new THREE.MeshBasicMaterial({ map: softBlob, transparent: true, depthWrite: false, opacity: 0.9 })));
+      contact.rotation.x = -Math.PI / 2; contact.position.set(0, 0.006, 0.24); contact.renderOrder = -1;
+      const rig = new THREE.Group(); rig.add(root, contact); rig.visible = false;
+      scene.add(rig);
+      passer.rig = { root: rig, wheels };
+      passer.paints = [[p1, PALETTE[0]]];
+    }, undefined, () => undefined);
 
     // ---------- Post-processing ----------
     const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
@@ -408,16 +396,20 @@ export default function LoginScene({ onReady }: { onReady?: () => void }) {
     const resize = () => {
       const wpx = host.clientWidth; const hpx = host.clientHeight;
       renderer.setSize(wpx, hpx, false);
-      composer.setPixelRatio(pixelRatio);
+      renderer.setPixelRatio(pixelRatio * quality);
+      composer.setPixelRatio(pixelRatio * quality);
       composer.setSize(wpx, hpx);
       camera.aspect = wpx / hpx;
       camera.fov = camera.aspect < 0.8 ? 40 : 30;
       camera.updateProjectionMatrix();
       grade.uniforms.aspect.value = camera.aspect;
     };
+    let quality = 1;
+    const applyQuality = () => resize();
     const ro = new ResizeObserver(resize); ro.observe(host); resize();
 
-    const carCenter = new THREE.Vector3(0, 0.55, 0.24);
+    const focus = new THREE.Vector3(0, 2.0, 0.5);
+    let frames = 0; let frameTime = 0;
     const target = new THREE.Vector3(); const right = new THREE.Vector3();
     let dist = 0;
     let last = performance.now();
@@ -429,37 +421,50 @@ export default function LoginScene({ onReady }: { onReady?: () => void }) {
       dist += heroMove;
       world.position.z = -(dist % PERIOD);
 
-      const spin = reduceMotion ? 0 : Math.min(HERO_SPEED / 0.384, 30) * dt; // capped to avoid wagon-wheel strobing
-      if (hero) {
-        hero.wheels.forEach((w) => { w.rotation.x += spin; });
-        // Subtle suspension float and pitch.
-        hero.root.position.y = (Math.sin(t * 9.1) * 0.5 + Math.sin(t * 13.7) * 0.3) * 0.0035;
-        hero.root.rotation.x = Math.sin(t * 1.7) * 0.0022;
-        hero.root.rotation.z = Math.sin(t * 1.1) * 0.0018;
-      }
-      for (const o of oncoming) {
-        if (!reduceMotion) o.z -= (HERO_SPEED + ONCOMING_SPEED) * dt;
-        if (o.z < -520) o.z += 3 * 190;
-        o.rig.root.position.set(-LANE, 0, o.z);
-        o.rig.wheels.forEach((w) => { w.rotation.x += spin; });
+      // Truck wheels: turned at a steady, readable rate rather than true speed (avoids strobing).
+      truck.update(t, reduceMotion ? 0 : 11 * dt);
+      if (passer.rig) {
+        const r = passer.rig;
+        if (passer.wait > 0) {
+          passer.wait -= dt;
+          if (passer.wait <= 0) {
+            passer.paint = (passer.paint + 1) % PALETTE.length;
+            passer.paints[0][0].color.set(PALETTE[passer.paint]);
+            passer.z = -45; r.root.visible = true;
+          }
+        } else {
+          if (!reduceMotion) passer.z += OVERTAKE_SPEED * dt;
+          r.root.position.set(-LANE, 0, passer.z);
+          r.wheels.forEach((w) => { w.rotation.x += (reduceMotion ? 0 : 20) * dt; });
+          if (passer.z > 70) { r.root.visible = false; passer.wait = 9 + Math.random() * 6; }
+        }
       }
 
-      // Tracking-car camera: slow arc around the front three-quarter, a little hand-held float.
+      // Tracking-car camera: slow arc around the truck's front three-quarter, a little hand-held float.
       pointer.x += (pointer.tx - pointer.x) * 0.04; pointer.y += (pointer.ty - pointer.y) * 0.04;
       const narrow = camera.aspect < 0.8;
-      const drift = reduceMotion ? 0 : Math.sin(t * 0.06);
+      const drift = reduceMotion ? 0 : Math.sin(t * 0.05);
       const shake = reduceMotion ? 0 : 1;
-      const angle = (narrow ? 0.42 : 0.62) + drift * 0.2 + pointer.x * 0.18;
-      const radius = narrow ? 12.5 : 10.4;
+      const angle = -((narrow ? 0.5 : 0.66) + drift * 0.14 + pointer.x * 0.12);
+      const radius = narrow ? 30 : 22;
       camera.position.set(
-        Math.sin(angle) * radius + Math.sin(t * 1.9) * 0.01 * shake,
-        (narrow ? 1.7 : 1.05) - pointer.y * 0.5 + Math.sin(t * 2.3) * 0.012 * shake,
+        Math.sin(angle) * radius + Math.sin(t * 1.9) * 0.012 * shake,
+        (narrow ? 2.2 : 1.45) - pointer.y * 0.5 + Math.sin(t * 2.3) * 0.014 * shake,
         Math.cos(angle) * radius,
-      ).add(carCenter);
+      ).add(focus);
       right.set(Math.cos(angle), 0, -Math.sin(angle));
-      target.copy(carCenter).addScaledVector(right, narrow ? 0 : 1.15);
-      target.y = narrow ? -1.3 : 0.85;
+      target.copy(focus).addScaledVector(right, narrow ? 0.6 : 3.2);
+      target.y = narrow ? -2.4 : 2.1;
       camera.lookAt(target);
+
+      // Adaptive quality: if frames run long, render fewer pixels (and finally drop bloom).
+      frames++; frameTime += dt;
+      if (frames === 90) {
+        const avg = frameTime / frames;
+        if (avg > 0.026 && quality > 0.55) { quality = Math.max(0.55, quality * 0.8); applyQuality(); }
+        else if (avg > 0.026 && bloom.enabled) bloom.enabled = false;
+        frames = 0; frameTime = 0;
+      }
 
       grade.uniforms.time.value = t % 100;
       sky.material.uniforms.time.value = t;

@@ -23,6 +23,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+        env:
+          # Set these under Settings → Secrets and variables → Actions → Variables to switch on
+          # logins and the shared database. Without them the site runs in local mode.
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
       - name: Publish dist/ to the gh-pages branch
         uses: peaceiris/actions-gh-pages@v4
         with:

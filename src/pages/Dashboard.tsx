@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ClipboardCheck, Package, TriangleAlert, Truck, Wrench, CalendarClock } from 'lucide-react';
 import { useStore } from '../store';
+import { usePermissions } from '../auth';
 import { Badge, Card, HealthDot, PageHeader, StatCard } from '../components/ui';
 import { buildAlerts } from '../lib/alerts';
 import { byId, fmtDate, fmtMoney, parseISO, relDays, serviceDue, todayISO, vehicleHealth, workOrderCost } from '../lib/utils';
@@ -12,6 +13,7 @@ const HEALTH_COLORS = { green: 'var(--good)', amber: 'var(--warn)', red: 'var(--
 export default function Dashboard() {
   const { data } = useStore();
   const navigate = useNavigate();
+  const perm = usePermissions();
   const cur = data.settings.currency;
 
   const health = useMemo(() => data.vehicles.map((v) => ({ v, ...vehicleHealth(v, data) })), [data]);
@@ -59,8 +61,8 @@ export default function Dashboard() {
     <>
       <PageHeader title="Fleet overview" subtitle={`${data.settings.companyName} · ${fmtDate(todayISO())}`}
         actions={<>
-          <Link className="btn" to="/checks?new=1"><ClipboardCheck size={16} /> New pre-start</Link>
-          <Link className="btn btn-primary" to="/work-orders?new=1"><Wrench size={16} /> New work order</Link>
+          {perm.canWrite('checks') && <Link className="btn" to="/checks?new=1"><ClipboardCheck size={16} /> New pre-start</Link>}
+          {perm.canWrite('workOrders') && <Link className="btn btn-primary" to="/work-orders?new=1"><Wrench size={16} /> New work order</Link>}
         </>} />
 
       <div className="stats">

@@ -3,9 +3,12 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Bell, CalendarDays, ClipboardCheck, Fuel, Gauge, LayoutDashboard, Menu, Moon, Package, Search,
   Settings as SettingsIcon, Sun, TriangleAlert, Truck, Users, Wrench, BarChart3, CalendarClock,
+  ShieldCheck, LogOut, Cloud, CloudOff, HardDrive, Loader2,
 } from 'lucide-react';
 import { useStore } from '../store';
+import { useAuth, usePermissions } from '../auth';
 import { buildAlerts } from '../lib/alerts';
+import { ROLES } from '../lib/permissions';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -20,6 +23,7 @@ const NAV = [
   { to: '/calendar', label: 'Calendar', icon: CalendarDays },
   { to: '/reports', label: 'Reports', icon: BarChart3 },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
+  { to: '/admin', label: 'Admin panel', icon: ShieldCheck, adminOnly: true },
 ];
 
 type Theme = 'light' | 'dark';
@@ -33,7 +37,8 @@ function initialTheme(): Theme {
 }
 
 export function Layout({ children }: { children: ReactNode }) {
-  const { data } = useStore();
+  const { data, sync } = useStore();
+  const { isAdmin } = usePermissions();
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [navOpen, setNavOpen] = useState(false);
   const location = useLocation();
@@ -59,7 +64,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
         </div>
         <nav>
-          {NAV.map(({ to, label, icon: Icon, end }) => (
+          {NAV.filter((n) => !('adminOnly' in n) || isAdmin).map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
               <Icon size={18} />
               <span>{label}</span>
@@ -68,7 +73,7 @@ export function Layout({ children }: { children: ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <div className="sidebar-foot muted">Data is stored in this browser.</div>
+        <UserBox />
       </aside>
       <div className="scrim" onClick={() => setNavOpen(false)} />
       <div className="main">
@@ -76,6 +81,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <button className="icon-btn only-mobile" onClick={() => setNavOpen(true)} aria-label="Open menu"><Menu size={20} /></button>
           <GlobalSearch />
           <div className="row gap-sm">
+            <SyncBadge sync={sync} />
             <AlertsBell />
             <button className="icon-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               aria-label="Toggle dark mode" title="Toggle dark mode">
@@ -83,7 +89,13 @@ export function Layout({ children }: { children: ReactNode }) {
             </button>
           </div>
         </header>
-        <main className="content">{children}</main>
+        <main className="content">
+          {sync.error && sync.status === 'ready' && <div className="banner tone-bad">Last change was not saved: {sync.error}</div>}
+          {sync.mode === 'cloud' && isAdmin && data.vehicles.length === 0 && location.pathname === '/' && (
+            <div className="banner tone-info">Your shared workspace is empty. Add your first vehicle, or go to <NavLink className="link" to="/admin">Admin panel → Data</NavLink> to load demo data.</div>
+          )}
+          {children}
+        </main>
       </div>
     </div>
   );
@@ -183,6 +195,31 @@ function AlertsBell() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function SyncBadge({ sync }: { sync: ReturnType<typeof useStore>['sync'] }) {
+  if (sync.mode === 'local') {
+    return <span className="sync-badge" title="Data is stored in this browser only"><HardDrive size={14} /> <span className="hide-sm">Local</span></span>;
+  }
+  if (sync.saving) return <span className="sync-badge tone-info"><Loader2 size={14} className="spin" /> <span className="hide-sm">Saving…</span></span>;
+  if (sync.error) return <span className="sync-badge tone-bad" title={sync.error}><CloudOff size={14} /> <span className="hide-sm">Not saved</span></span>;
+  return <span className="sync-badge tone-good" title="Changes save and sync live"><Cloud size={14} /> <span className="hide-sm">Live</span></span>;
+}
+
+function UserBox() {
+  const { mode, profile, session, signOut, role } = useAuth();
+  if (mode === 'local') return <div className="sidebar-foot muted">Local mode – data is stored in this browser.</div>;
+  const name = profile?.full_name || session?.user.email || '';
+  return (
+    <div className="sidebar-foot user-box">
+      <span className="avatar sm">{name.split(/[\s@.]/).filter(Boolean).map((p) => p[0]).join('').slice(0, 2).toUpperCase()}</span>
+      <div className="user-meta">
+        <strong title={name}>{name}</strong>
+        <small className="muted">{ROLES.find((r) => r.value === role)?.label ?? role}</small>
+      </div>
+      <button className="icon-btn" onClick={() => signOut()} aria-label="Sign out" title="Sign out"><LogOut size={16} /></button>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 # Torqline – Fleet Maintenance
 
-Torqline is a web app for running a vehicle and equipment fleet. It covers servicing, workshop jobs, driver pre-start checks, defects, parts, fuel and compliance, all from one dashboard.
+Torqline is a web app for running a vehicle and equipment fleet. It supports **team logins, role-based permissions, a shared live database and an admin panel**. It covers servicing, workshop jobs, driver pre-start checks, defects, parts, fuel and compliance, all from one dashboard.
 
 ## Features
 
@@ -17,6 +17,7 @@ Torqline is a web app for running a vehicle and equipment fleet. It covers servi
 | **Fuel log** | Record fills, spend and price per litre, and see economy (L/100 km) |
 | **Calendar** | Month view of work orders, services, and vehicle and driver expiries |
 | **Reports** | Cost per vehicle and per km, spend by depot and by job type, on-time completion, pre-start pass rate, most-reported defect areas, workshop productivity |
+| **Team & admin panel** | Email and password login, and new accounts wait for an admin's approval. Five roles (admin, manager, technician, driver, viewer), each enforced by the database. Changes sync live between everyone who has the app open. The admin panel has user management, an activity log (who changed what, exportable as CSV), a role and permission overview, and backup and demo-data tools |
 | **Settings** | Company name, currency, labour rate, depots, custom pre-start checklist, JSON backup and restore |
 
 Everyday touches:
@@ -43,11 +44,16 @@ npm run build     # type-check and build a production bundle into dist/
 npm run preview   # serve the production build
 ```
 
-The app comes loaded with demo data. Use **Settings → Start fresh** to clear it, or **Load demo data** to bring it back. Data is saved in the browser's local storage, so use **Download backup** to move it between devices.
+### Two modes
+
+- **Local mode** (the default): no login, and data is saved in the browser. This is great for trying the app out.
+- **Team mode:** logins plus a shared Supabase database. Follow **[supabase/README.md](supabase/README.md)** to set it up (about 10 minutes, free plan).
+
+In local mode, the app comes loaded with demo data. Use **Settings → Start fresh** to clear it, or **Load demo data** to bring it back. Data is saved in the browser's local storage, so use **Download backup** to move it between devices.
 
 ## Tech
 
-React 19, TypeScript, Vite, React Router, Recharts and Lucide icons. There is no backend.
+React 19, TypeScript, Vite, React Router, Recharts and Lucide icons. Team mode adds Supabase (Postgres with row-level security, Auth, Realtime).
 
 ## Project layout
 
@@ -57,6 +63,10 @@ src/
   data/seed.ts  Demo data
   lib/          Date, cost, service-due and fleet-health logic, and alerts
   pages/        One file per screen
-  store.tsx     App state and the cross-module automations
+  store.tsx     App state, cross-module automations, and cloud sync (diff → push, realtime → merge)
+  auth.tsx      Login session, profile and role
+supabase/
+  schema.sql    Tables, row-level security, activity-log triggers (run once in Supabase)
+  README.md     Step-by-step setup for team mode
   types.ts      Data model
 ```

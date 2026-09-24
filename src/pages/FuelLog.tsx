@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Download, Fuel, Plus, Trash2 } from 'lucide-react';
 import { useStore } from '../store';
+import { usePermissions } from '../auth';
 import type { FuelEntry } from '../types';
 import { Card, Empty, Field, Modal, PageHeader, Select, StatCard, confirmAction } from '../components/ui';
 import { byId, downloadCSV, fmtDate, fmtMoney, fmtNum, todayISO, uid, daysUntil } from '../lib/utils';
@@ -20,6 +21,7 @@ export default function FuelLog() {
   const [period, setPeriod] = useState('90');
   const [adding, setAdding] = useState(false);
   const cur = data.settings.currency;
+  const perm = usePermissions();
 
   const rows = useMemo(() => data.fuel
     .filter((f) => (vehicle === 'all' || f.vehicleId === vehicle) && (period === 'all' || -daysUntil(f.date) <= Number(period)))
@@ -35,7 +37,7 @@ export default function FuelLog() {
         actions={<>
           <button className="btn" onClick={() => downloadCSV('fuel-log.csv', [['Date', 'Vehicle', 'Litres', 'Cost', 'Odometer', 'Station'],
             ...rows.map((f) => [f.date, byId(data.vehicles, f.vehicleId)?.rego, f.litres, f.cost, f.odometer, f.station])])}><Download size={16} /> Export CSV</button>
-          <button className="btn btn-primary" disabled={!data.vehicles.length} onClick={() => setAdding(true)}><Plus size={16} /> Add fill</button>
+          {perm.canWrite('fuel') && <button className="btn btn-primary" disabled={!data.vehicles.length} onClick={() => setAdding(true)}><Plus size={16} /> Add fill</button>}
         </>} />
       <div className="stats">
         <StatCard label="Fuel spend" value={fmtMoney(cost, cur)} hint={`${rows.length} fills`} />
@@ -59,7 +61,7 @@ export default function FuelLog() {
                     <td>{fmtDate(f.date)}</td><td className="strong">{byId(data.vehicles, f.vehicleId)?.rego}</td><td>{f.station}</td>
                     <td className="num">{f.odometer ? fmtNum(f.odometer) : '—'}</td><td className="num">{fmtNum(f.litres)}</td>
                     <td className="num">{fmtMoney(f.cost, cur)}</td><td className="num">{f.litres ? (f.cost / f.litres).toFixed(2) : '—'}</td>
-                    <td><button className="icon-btn" onClick={() => confirmAction('Delete this entry?') && remove('fuel', f.id)} aria-label="Delete"><Trash2 size={16} /></button></td>
+                    <td>{perm.canDelete && <button className="icon-btn" onClick={() => confirmAction('Delete this entry?') && remove('fuel', f.id)} aria-label="Delete"><Trash2 size={16} /></button>}</td>
                   </tr>
                 ))}
               </tbody>

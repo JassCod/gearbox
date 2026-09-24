@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { CalendarClock, Check, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
 import { useStore } from '../store';
+import { usePermissions } from '../auth';
 import type { ServiceSchedule, WorkOrder } from '../types';
 import { Badge, Card, Empty, Field, Modal, PageHeader, Progress, Select, confirmAction } from '../components/ui';
 import { byId, fmtDate, serviceDue, todayISO, uid, addDays, type DueState } from '../lib/utils';
@@ -13,6 +14,8 @@ export default function Maintenance() {
   const [vehicle, setVehicle] = useState(params.get('vehicle') ?? 'all');
   const [state, setState] = useState<DueState | 'all'>('all');
   const [editing, setEditing] = useState<ServiceSchedule | null>(null);
+  const perm = usePermissions();
+  const canEdit = perm.canWrite('schedules');
 
   const rows = useMemo(() => data.schedules
     .map((s) => ({ v: byId(data.vehicles, s.vehicleId), due: serviceDue(s, byId(data.vehicles, s.vehicleId)) }))
@@ -44,7 +47,7 @@ export default function Maintenance() {
   return (
     <>
       <PageHeader title="Service schedules" subtitle="Plan servicing by kilometres, engine hours or calendar time – whichever comes first."
-        actions={<button className="btn btn-primary" disabled={!data.vehicles.length}
+        actions={canEdit && <button className="btn btn-primary" disabled={!data.vehicles.length}
           onClick={() => setEditing(blankSchedule(vehicle !== 'all' ? vehicle : data.vehicles[0]?.id ?? ''))}><Plus size={16} /> Add schedule</button>} />
       <Card>
         <div className="toolbar">
@@ -77,10 +80,10 @@ export default function Maintenance() {
                       <td>
                         <div className="row gap-xs end">
                           {wo ? <Link className="btn btn-sm" to={`/work-orders?open=${wo.id}`}>#{wo.number}</Link>
-                            : <button className="btn btn-sm" onClick={() => createWO(s)} title="Create work order"><Wrench size={14} /> Book</button>}
-                          <button className="icon-btn" onClick={() => markDone(s)} title="Mark done now"><Check size={16} /></button>
-                          <button className="icon-btn" onClick={() => setEditing(s)} title="Edit"><Pencil size={16} /></button>
-                          <button className="icon-btn" onClick={() => confirmAction('Delete this schedule?') && remove('schedules', s.id)} title="Delete"><Trash2 size={16} /></button>
+                            : perm.canWrite('workOrders') && <button className="btn btn-sm" onClick={() => createWO(s)} title="Create work order"><Wrench size={14} /> Book</button>}
+                          {canEdit && <button className="icon-btn" onClick={() => markDone(s)} title="Mark done now"><Check size={16} /></button>}
+                          {canEdit && <button className="icon-btn" onClick={() => setEditing(s)} title="Edit"><Pencil size={16} /></button>}
+                          {perm.canDelete && <button className="icon-btn" onClick={() => confirmAction('Delete this schedule?') && remove('schedules', s.id)} title="Delete"><Trash2 size={16} /></button>}
                         </div>
                       </td>
                     </tr>

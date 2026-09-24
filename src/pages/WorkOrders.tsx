@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Download, Plus, Printer, Trash2, X } from 'lucide-react';
 import { useStore } from '../store';
+import { usePermissions } from '../auth';
 import type { Priority, WorkOrder, WorkOrderStatus, WorkOrderType } from '../types';
 import { Badge, Card, Field, Modal, PageHeader, SearchInput, Select, confirmAction } from '../components/ui';
 import { addDays, byId, daysUntil, downloadCSV, fmtDate, fmtMoney, relDays, todayISO, uid, workOrderCost } from '../lib/utils';
@@ -22,6 +23,8 @@ export default function WorkOrders() {
   const [view, setView] = useState<'board' | 'list'>('board');
   const [dragId, setDragId] = useState<string | null>(null);
   const [editing, setEditing] = useState<WorkOrder | null>(null);
+  const perm = usePermissions();
+  const canEdit = perm.canWrite('workOrders');
 
   // Deep links: ?open=<id> opens a work order, ?new=1[&vehicle=<id>] starts a new one.
   useEffect(() => {
@@ -29,7 +32,7 @@ export default function WorkOrders() {
     if (open) {
       const wo = byId(data.workOrders, open);
       if (wo) setEditing(wo);
-    } else if (params.get('new')) {
+    } else if (params.get('new') && canEdit) {
       setEditing(blankWorkOrder(nextWorkOrderNumber(), params.get('vehicle') ?? data.vehicles[0]?.id ?? '', data.settings.labourRate));
     }
   }, [params]);
@@ -56,11 +59,11 @@ export default function WorkOrders() {
 
   return (
     <>
-      <PageHeader title="Work orders" subtitle="Drag cards between columns to update their status."
+      <PageHeader title="Work orders" subtitle={canEdit ? 'Drag cards between columns to update their status.' : 'Read-only – your role cannot change work orders.'}
         actions={<>
           <button className="btn" onClick={exportCSV}><Download size={16} /> Export CSV</button>
-          <button className="btn btn-primary" disabled={!data.vehicles.length}
-            onClick={() => setEditing(blankWorkOrder(nextWorkOrderNumber(), data.vehicles[0]?.id ?? '', data.settings.labourRate))}><Plus size={16} /> New work order</button>
+          {canEdit && <button className="btn btn-primary" disabled={!data.vehicles.length}
+            onClick={() => setEditing(blankWorkOrder(nextWorkOrderNumber(), data.vehicles[0]?.id ?? '', data.settings.labourRate))}><Plus size={16} /> New work order</button>}
         </>} />
       <div className="toolbar">
         <SearchInput value={q} onChange={setQ} placeholder="Search number, title, rego…" />
@@ -79,13 +82,13 @@ export default function WorkOrders() {
             return (
               <div key={col.status} className={`column ${dragId ? 'droppable' : ''}`}
                 onDragOver={(e) => e.preventDefault()}
-                onDrop={() => { if (dragId) setWorkOrderStatus(dragId, col.status); setDragId(null); }}>
+                onDrop={() => { if (dragId && canEdit) setWorkOrderStatus(dragId, col.status); setDragId(null); }}>
                 <div className="column-head"><span>{col.label}</span><span className="pill">{items.length}</span></div>
                 {shown.map((w) => {
                   const v = byId(data.vehicles, w.vehicleId);
                   const late = w.status !== 'completed' && daysUntil(w.dueDate) < 0;
                   return (
-                    <button key={w.id} className={`wo-card prio-${w.priority}`} draggable
+                    <button key={w.id} className={`wo-card prio-${w.priority}`} draggable={canEdit}
                       onDragStart={() => setDragId(w.id)} onDragEnd={() => setDragId(null)} onClick={() => setEditing(w)}>
                       <div className="row between"><span className="small muted">#{w.number} · {w.type}</span><Badge value={w.priority} /></div>
                       <strong>{w.title}</strong>
@@ -134,6 +137,8 @@ function blankWorkOrder(number: number, vehicleId: string, labourRate: number): 
 
 function WorkOrderForm({ order, onClose }: { order: WorkOrder; onClose: () => void }) {
   const { data, upsert, remove, setWorkOrderStatus } = useStore();
+  const perm = usePermissions();
+  const readOnly = !perm.canWrite('workOrders');
   const [w, setW] = useState(order);
   const [addPart, setAddPart] = useState('');
   const isNew = !data.workOrders.some((x) => x.id === order.id);
@@ -176,12 +181,13 @@ function WorkOrderForm({ order, onClose }: { order: WorkOrder; onClose: () => vo
   return (
     <Modal title={isNew ? 'New work order' : `Work order #${w.number}`} onClose={onClose} wide
       footer={<>
-        {!isNew && <button type="button" className="btn btn-danger-ghost push-left" onClick={() => { if (confirmAction('Delete this work order?')) { remove('workOrders', w.id); onClose(); } }}><Trash2 size={16} /> Delete</button>}
+        {!isNew && perm.canDelete && <button type="button" className="btn btn-danger-ghost push-left" onClick={() => { if (confirmAction('Delete this work order?')) { remove('workOrders', w.id); onClose(); } }}><Trash2 size={16} /> Delete</button>}
         {!isNew && <button type="button" className="btn" onClick={print}><Printer size={16} /> Job card</button>}
         <button type="button" className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" form="wo-form">Save</button>
+        {!readOnly && <button className="btn btn-primary" form="wo-form">Save</button>}
       </>}>
-      <form id="wo-form" className="form-grid" onSubmit={save}>
+      <form id="wo-form" onSubmit={save}>
+      <fieldset className="plain form-grid" disabled={readOnly}>
         <Field label="Title" span><input className="input" required value={w.title} placeholder="What needs doing?" onChange={(e) => set('title', e.target.value)} /></Field>
         <Field label="Vehicle">
           <select className="input" value={w.vehicleId} onChange={(e) => set('vehicleId', e.target.value)}>
@@ -251,6 +257,7 @@ function WorkOrderForm({ order, onClose }: { order: WorkOrder; onClose: () => vo
           <span>Parts <b>{fmtMoney(cost.parts, cur)}</b></span>
           <span className="total">Total <b>{fmtMoney(cost.total, cur)}</b></span>
         </div>
+      </fieldset>
       </form>
     </Modal>
   );

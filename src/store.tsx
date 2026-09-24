@@ -1,7 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { AppData, CollectionKey, Defect, PrestartCheck, Settings, WorkOrder } from './types';
 import { createSeed } from './data/seed';
 import { todayISO, uid } from './lib/utils';
+import { supabase } from './lib/supabase';
+import { useAuth } from './auth';
+import { applyRemote, diff, emptyData, isEmptyDiff, loadAll, pushDiff, stableStringify } from './lib/cloudSync';
 
 const STORAGE_KEY = 'torqline:data:v1';
 
@@ -19,6 +22,15 @@ interface Store {
   replaceAll(data: AppData): void;
   resetDemo(): void;
   clearAll(): void;
+  sync: SyncState;
+  reload(): Promise<void>;
+}
+
+export interface SyncState {
+  mode: 'local' | 'cloud';
+  status: 'loading' | 'ready' | 'error';
+  saving: boolean;
+  error: string | null;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -36,16 +48,114 @@ function load(): AppData {
   return createSeed();
 }
 
-export function StoreProvider({ children }: { children: ReactNode }) {
-  const [data, setData] = useState<AppData>(load);
+/**
+ * In local mode data lives in localStorage. In cloud mode (`cloud` = signed-in
+ * member) every change is diffed against the last known server state and
+ * pushed to Supabase, and other people's changes stream in over realtime.
+ */
+export function StoreProvider({ children, cloud = false }: { children: ReactNode; cloud?: boolean }) {
+  const [data, setData] = useState<AppData>(() => (cloud ? emptyData(createSeed().settings) : load()));
+  const [status, setStatus] = useState<SyncState['status']>(cloud ? 'loading' : 'ready');
+  const [pending, setPending] = useState(0);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const { refreshProfile } = useAuth();
+  /** Last state known to be on the server. */
+  const synced = useRef<AppData | null>(null);
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  /** Canonical JSON of writes still expected to echo back over realtime, per record key. */
+  const inFlight = useRef(new Map<string, string[]>());
+  /** Returns true (and forgets it) when `json` is the echo of our own write. */
+  const isOwnEcho = (key: string, json: string) => {
+    const sent = inFlight.current.get(key);
+    const idx = sent?.indexOf(json) ?? -1;
+    if (!sent || idx < 0) return false;
+    sent.splice(0, idx + 1);
+    if (!sent.length) inFlight.current.delete(key);
+    return true;
+  };
 
   useEffect(() => {
+    if (cloud) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch {
       /* storage full or unavailable – app keeps working in memory */
     }
-  }, [data]);
+  }, [data, cloud]);
+
+  const reload = useCallback(async () => {
+    if (!cloud || !supabase) return;
+    setStatus((st) => (st === 'ready' ? 'ready' : 'loading'));
+    try {
+      const { data: remote } = await loadAll(supabase, createSeed().settings);
+      inFlight.current.clear();
+      synced.current = remote;
+      setData(remote);
+      setStatus('ready');
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : 'Could not load data');
+      setStatus('error');
+    }
+  }, [cloud]);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  // Push local edits.
+  useEffect(() => {
+    if (!cloud || !supabase || status !== 'ready' || !synced.current) return;
+    const changes = diff(synced.current, data);
+    if (isEmptyDiff(changes)) return;
+    synced.current = data;
+    const remember = (key: string, value: unknown) =>
+      inFlight.current.set(key, [...(inFlight.current.get(key) ?? []), stableStringify(value)].slice(-20));
+    changes.upserts.forEach((u) => remember(`${u.collection}:${u.id}`, u.data));
+    if (changes.settings) remember('settings', changes.settings);
+    const client = supabase;
+    setPending((n) => n + 1);
+    queue.current = queue.current
+      .then(() => pushDiff(client, changes))
+      .then(() => setSyncError(null))
+      .catch((err: unknown) => {
+        const message = describeError(err);
+        setSyncError(message);
+        // A refusal usually means our role changed – pick that up, then show what the server really has.
+        if (/permission/i.test(message)) refreshProfile();
+        return reload();
+      })
+      .finally(() => setPending((n) => n - 1));
+  }, [data, cloud, status, reload, refreshProfile]);
+
+  // Pull everyone else's edits.
+  useEffect(() => {
+    if (!cloud || !supabase || status !== 'ready') return;
+    const client = supabase;
+    type Change = Parameters<typeof applyRemote>[1];
+    const apply = (change: Change) => {
+      if (synced.current) synced.current = applyRemote(synced.current, change);
+      setData((prev) => applyRemote(prev, change));
+    };
+    const channel = client.channel('workspace')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'records' }, (payload) => {
+        if (payload.eventType === 'DELETE') {
+          const old = payload.old as { collection: CollectionKey; id: string };
+          apply({ type: 'delete', collection: old.collection, id: old.id });
+        } else {
+          const row = payload.new as Extract<Change, { type: 'upsert' }>['row'];
+          // Skip echoes of our own saves so a slow echo can't undo a newer local edit.
+          if (isOwnEcho(`${row.collection}:${row.id}`, stableStringify(row.data))) return;
+          apply({ type: 'upsert', row });
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, (payload) => {
+        const settings = (payload.new as { data?: Settings }).data;
+        if (!settings || isOwnEcho('settings', stableStringify(settings))) return;
+        const same = (a: Settings) => stableStringify(a) === stableStringify(settings);
+        if (synced.current && !same(synced.current.settings)) synced.current = { ...synced.current, settings };
+        setData((prev) => (same(prev.settings) ? prev : { ...prev, settings }));
+      })
+      .subscribe();
+    return () => { client.removeChannel(channel); };
+  }, [cloud, status]);
 
   const upsert = useCallback(<K extends CollectionKey>(key: K, item: Item<K>) => {
     setData((prev) => {
@@ -168,11 +278,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     settings: prev.settings,
   })), []);
 
+  const sync = useMemo<SyncState>(() => ({
+    mode: cloud ? 'cloud' : 'local', status, saving: pending > 0, error: syncError,
+  }), [cloud, status, pending, syncError]);
+
   const value = useMemo<Store>(() => ({
     data, upsert, remove, updateSettings, submitCheck, createWorkOrderFromDefect, setWorkOrderStatus,
-    nextWorkOrderNumber, replaceAll, resetDemo, clearAll,
+    nextWorkOrderNumber, replaceAll, resetDemo, clearAll, sync, reload,
   }), [data, upsert, remove, updateSettings, submitCheck, createWorkOrderFromDefect, setWorkOrderStatus,
-    nextWorkOrderNumber, replaceAll, resetDemo, clearAll]);
+    nextWorkOrderNumber, replaceAll, resetDemo, clearAll, sync, reload]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -181,4 +295,11 @@ export function useStore() {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error('useStore must be used inside StoreProvider');
   return ctx;
+}
+
+function describeError(err: unknown) {
+  const message = (err as { message?: string } | null)?.message ?? '';
+  if (/row-level security|permission|42501/i.test(message)) return "You don't have permission to make that change.";
+  if (/fetch|network/i.test(message)) return 'Could not reach the server – check your connection.';
+  return message || 'Could not save changes';
 }

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { CheckCircle2, Plus, TriangleAlert, Wrench } from 'lucide-react';
 import { useStore } from '../store';
+import { usePermissions } from '../auth';
 import type { Defect, DefectStatus, Severity } from '../types';
 import { Badge, Card, Empty, Field, Modal, PageHeader, Select } from '../components/ui';
 import { byId, fmtDate, relDays, todayISO, uid } from '../lib/utils';
@@ -14,6 +15,8 @@ export default function Defects() {
   const [status, setStatus] = useState<DefectStatus | 'active' | 'all'>('active');
   const [severity, setSeverity] = useState<Severity | 'all'>('all');
   const [creating, setCreating] = useState(false);
+  const perm = usePermissions();
+  const canEdit = perm.canWrite('defects');
 
   const rows = useMemo(() => data.defects
     .filter((d) => (status === 'all' || (status === 'active' ? d.status !== 'resolved' : d.status === status))
@@ -23,7 +26,7 @@ export default function Defects() {
   return (
     <>
       <PageHeader title="Defects" subtitle="Faults reported by drivers or found in the workshop. Turn them into work orders in one click."
-        actions={<button className="btn btn-primary" disabled={!data.vehicles.length} onClick={() => setCreating(true)}><Plus size={16} /> Report defect</button>} />
+        actions={canEdit && <button className="btn btn-primary" disabled={!data.vehicles.length} onClick={() => setCreating(true)}><Plus size={16} /> Report defect</button>} />
       <Card>
         <div className="toolbar">
           <Select label="Status" value={status} onChange={setStatus} options={[
@@ -50,14 +53,14 @@ export default function Defects() {
                     </div>
                   </div>
                   <div className="defect-actions">
-                    {d.status === 'open' && (
+                    {d.status === 'open' && perm.canWrite('workOrders') && (
                       <button className="btn btn-primary btn-sm" onClick={() => navigate(`/work-orders?open=${createWorkOrderFromDefect(d).id}`)}><Wrench size={14} /> Create work order</button>
                     )}
                     {wo && <Link className="btn btn-sm" to={`/work-orders?open=${wo.id}`}>Work order #{wo.number}</Link>}
-                    {d.status !== 'resolved' && (
+                    {d.status !== 'resolved' && canEdit && (
                       <button className="btn btn-sm" onClick={() => upsert('defects', { ...d, status: 'resolved' })}><CheckCircle2 size={14} /> Mark resolved</button>
                     )}
-                    {d.status !== 'resolved' && (
+                    {d.status !== 'resolved' && canEdit && (
                       <select className="input input-sm" aria-label="Severity" value={d.severity} onChange={(e) => upsert('defects', { ...d, severity: e.target.value as Severity })}>
                         <option value="minor">Minor</option><option value="major">Major</option><option value="critical">Critical</option>
                       </select>

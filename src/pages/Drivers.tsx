@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Mail, Pencil, Phone, Plus, Trash2, Users, X } from 'lucide-react';
 import { useStore } from '../store';
+import { usePermissions } from '../auth';
 import type { Driver } from '../types';
 import { Badge, Card, Empty, Field, Modal, PageHeader, SearchInput, confirmAction } from '../components/ui';
 import { addDays, daysUntil, fmtDate, relDays, todayISO, uid } from '../lib/utils';
@@ -16,6 +17,7 @@ export default function Drivers() {
   const [params] = useSearchParams();
   const [q, setQ] = useState(params.get('q') ?? '');
   const [editing, setEditing] = useState<Driver | null>(null);
+  const perm = usePermissions();
 
   const rows = useMemo(() => data.drivers.filter((d) => {
     const s = q.toLowerCase();
@@ -25,7 +27,7 @@ export default function Drivers() {
   return (
     <>
       <PageHeader title="Drivers" subtitle="Licences, medicals and training tickets – with expiry reminders."
-        actions={<button className="btn btn-primary" onClick={() => setEditing({
+        actions={perm.canWrite('drivers') && <button className="btn btn-primary" onClick={() => setEditing({
           id: uid(), name: '', phone: '', email: '', licenceClass: 'C', licenceExpiry: addDays(todayISO(), 365),
           medicalExpiry: addDays(todayISO(), 365), depot: data.settings.depots[0] ?? '', trainings: [],
         })}><Plus size={16} /> Add driver</button>} />
@@ -60,8 +62,8 @@ export default function Drivers() {
                   {checks.length > 0 && ` (${Math.round((checks.filter((c) => c.passed).length / checks.length) * 100)}% passed)`}
                 </div>
                 <div className="row gap-xs end">
-                  <button className="icon-btn" onClick={() => setEditing(d)} aria-label="Edit"><Pencil size={16} /></button>
-                  <button className="icon-btn" onClick={() => confirmAction(`Remove ${d.name}?`) && remove('drivers', d.id)} aria-label="Delete"><Trash2 size={16} /></button>
+                  {perm.canWrite('drivers') && <button className="icon-btn" onClick={() => setEditing(d)} aria-label="Edit"><Pencil size={16} /></button>}
+                  {perm.canDelete && <button className="icon-btn" onClick={() => confirmAction(`Remove ${d.name}?`) && remove('drivers', d.id)} aria-label="Delete"><Trash2 size={16} /></button>}
                 </div>
               </Card>
             );

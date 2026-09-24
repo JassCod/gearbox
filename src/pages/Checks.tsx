@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Check, ClipboardCheck, Plus, X } from 'lucide-react';
 import { useStore } from '../store';
+import { usePermissions } from '../auth';
 import type { CheckItem, PrestartCheck } from '../types';
 import { Badge, Card, Empty, Field, Modal, PageHeader, Select } from '../components/ui';
 import { byId, fmtDate, fmtNum, todayISO } from '../lib/utils';
@@ -13,10 +14,11 @@ export default function Checks() {
   const [viewing, setViewing] = useState<PrestartCheck | null>(null);
   const [result, setResult] = useState<'all' | 'passed' | 'failed'>('all');
   const [vehicle, setVehicle] = useState('all');
+  const perm = usePermissions();
 
   useEffect(() => {
-    if (params.get('new')) setCreating(true);
-  }, [params]);
+    if (params.get('new') && perm.canWrite('checks')) setCreating(true);
+  }, [params, perm]);
   const closeNew = () => { setCreating(false); if (params.has('new')) setParams({}); };
 
   const rows = useMemo(() => data.checks
@@ -29,7 +31,7 @@ export default function Checks() {
   return (
     <>
       <PageHeader title="Pre-start checks" subtitle="Drivers complete a quick walk-around before each shift. Failed items become defects automatically."
-        actions={<button className="btn btn-primary" disabled={!data.vehicles.length || !data.drivers.length} onClick={() => setCreating(true)}><Plus size={16} /> New pre-start</button>} />
+        actions={perm.canWrite('checks') && <button className="btn btn-primary" disabled={!data.vehicles.length || !data.drivers.length} onClick={() => setCreating(true)}><Plus size={16} /> New pre-start</button>} />
 
       <div className="grid-2">
         <Card title={`Today · ${today.length} submitted`}>

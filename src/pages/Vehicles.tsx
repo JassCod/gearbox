@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Download, Plus, Truck } from 'lucide-react';
 import { useStore } from '../store';
+import { usePermissions } from '../auth';
 import type { Vehicle, VehicleType } from '../types';
 import { Badge, Card, Empty, Field, HealthDot, Modal, PageHeader, SearchInput, Select } from '../components/ui';
 import { byId, downloadCSV, fmtDate, fmtNum, uid, vehicleHealth, addDays, todayISO, type Health } from '../lib/utils';
@@ -17,6 +18,7 @@ export default function Vehicles() {
   const health = (params.get('health') ?? 'all') as Health | 'all';
   const [editing, setEditing] = useState<Vehicle | null>(null);
   const [view, setView] = useState<'table' | 'cards'>('table');
+  const { canManage } = usePermissions();
 
   const rows = useMemo(() => data.vehicles
     .map((v) => ({ v, h: vehicleHealth(v, data) }))
@@ -39,7 +41,7 @@ export default function Vehicles() {
       <PageHeader title="Vehicles & assets" subtitle={`${data.vehicles.length} assets across ${data.settings.depots.length} depots`}
         actions={<>
           <button className="btn" onClick={exportCSV}><Download size={16} /> Export CSV</button>
-          <button className="btn btn-primary" onClick={() => setEditing(blankVehicle(data.settings.depots[0]))}><Plus size={16} /> Add asset</button>
+          {canManage && <button className="btn btn-primary" onClick={() => setEditing(blankVehicle(data.settings.depots[0]))}><Plus size={16} /> Add asset</button>}
         </>} />
       <Card>
         <div className="toolbar">

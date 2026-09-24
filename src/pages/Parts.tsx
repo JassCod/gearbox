@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Download, Minus, Package, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useStore } from '../store';
+import { usePermissions } from '../auth';
 import type { Part } from '../types';
 import { Badge, Card, Empty, Field, Modal, PageHeader, SearchInput, Select, StatCard, confirmAction } from '../components/ui';
 import { downloadCSV, fmtMoney, uid } from '../lib/utils';
@@ -14,6 +15,8 @@ export default function Parts() {
   const [lowOnly, setLowOnly] = useState(params.get('low') === '1');
   const [editing, setEditing] = useState<Part | null>(null);
   const cur = data.settings.currency;
+  const perm = usePermissions();
+  const canEdit = perm.canWrite('parts');
 
   const categories = useMemo(() => [...new Set(data.parts.map((p) => p.category))].sort(), [data.parts]);
   const rows = useMemo(() => data.parts.filter((p) => {
@@ -38,7 +41,7 @@ export default function Parts() {
       <PageHeader title="Parts inventory" subtitle="Stock is deducted automatically when a work order using the part is completed."
         actions={<>
           <button className="btn" onClick={reorderList} disabled={!low.length}><Download size={16} /> Re-order list</button>
-          <button className="btn btn-primary" onClick={() => setEditing({ id: uid(), sku: '', name: '', category: categories[0] ?? 'General', qty: 0, minQty: 1, unitCost: 0, location: '', supplier: '' })}><Plus size={16} /> Add part</button>
+          {canEdit && <button className="btn btn-primary" onClick={() => setEditing({ id: uid(), sku: '', name: '', category: categories[0] ?? 'General', qty: 0, minQty: 1, unitCost: 0, location: '', supplier: '' })}><Plus size={16} /> Add part</button>}
         </>} />
       <div className="stats">
         <StatCard label="Stock value" value={fmtMoney(value, cur)} hint={`${data.parts.length} part lines`} />
@@ -66,17 +69,17 @@ export default function Parts() {
                     <td className="num">{fmtMoney(p.unitCost, cur)}</td>
                     <td className="num">
                       <div className="stepper">
-                        <button className="icon-btn" aria-label="Decrease" onClick={() => upsert('parts', { ...p, qty: Math.max(0, p.qty - 1) })}><Minus size={14} /></button>
+                        <button className="icon-btn" disabled={!canEdit} aria-label="Decrease" onClick={() => upsert('parts', { ...p, qty: Math.max(0, p.qty - 1) })}><Minus size={14} /></button>
                         <b>{p.qty}</b>
-                        <button className="icon-btn" aria-label="Increase" onClick={() => upsert('parts', { ...p, qty: p.qty + 1 })}><Plus size={14} /></button>
+                        <button className="icon-btn" disabled={!canEdit} aria-label="Increase" onClick={() => upsert('parts', { ...p, qty: p.qty + 1 })}><Plus size={14} /></button>
                       </div>
                       <div className="small muted">min {p.minQty}</div>
                     </td>
                     <td>{p.qty === 0 ? <Badge value="critical" label="Out" /> : p.qty <= p.minQty ? <Badge value="due-soon" label="Low" /> : <Badge value="ok" label="OK" />}</td>
                     <td>
                       <div className="row gap-xs end">
-                        <button className="icon-btn" onClick={() => setEditing(p)} aria-label="Edit"><Pencil size={16} /></button>
-                        <button className="icon-btn" onClick={() => confirmAction(`Delete ${p.name}?`) && remove('parts', p.id)} aria-label="Delete"><Trash2 size={16} /></button>
+                        {canEdit && <button className="icon-btn" onClick={() => setEditing(p)} aria-label="Edit"><Pencil size={16} /></button>}
+                        {perm.canDelete && <button className="icon-btn" onClick={() => confirmAction(`Delete ${p.name}?`) && remove('parts', p.id)} aria-label="Delete"><Trash2 size={16} /></button>}
                       </div>
                     </td>
                   </tr>

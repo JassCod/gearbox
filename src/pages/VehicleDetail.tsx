@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Gauge, Pencil, Trash2 } from 'lucide-react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useStore } from '../store';
+import { usePermissions } from '../auth';
 import { Badge, Card, Empty, Field, HealthDot, Modal, PageHeader, Progress, StatCard, confirmAction } from '../components/ui';
 import { byId, fmtDate, fmtMoney, fmtNum, serviceDue, vehicleHealth, workOrderCost } from '../lib/utils';
 import { fuelEfficiency } from './FuelLog';
@@ -14,6 +15,7 @@ export default function VehicleDetail() {
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const [reading, setReading] = useState(false);
+  const perm = usePermissions();
   const v = byId(data.vehicles, id);
   const cur = data.settings.currency;
 
@@ -49,9 +51,9 @@ export default function VehicleDetail() {
         title={`${v.rego} · ${v.name}`}
         subtitle={<span className="row gap-sm wrap"><HealthDot health={h.health} /> {v.year} {v.make} {v.model} · {v.type} · {v.depot} <Badge value={v.status} /></span>}
         actions={<>
-          <button className="btn" onClick={() => setReading(true)}><Gauge size={16} /> Update reading</button>
-          <button className="btn" onClick={() => setEditing(true)}><Pencil size={16} /> Edit</button>
-          <button className="btn btn-danger-ghost" onClick={del} aria-label="Delete asset"><Trash2 size={16} /></button>
+          {perm.canWrite('vehicles') && <button className="btn" onClick={() => setReading(true)}><Gauge size={16} /> Update reading</button>}
+          {perm.canManage && <button className="btn" onClick={() => setEditing(true)}><Pencil size={16} /> Edit</button>}
+          {perm.canDelete && <button className="btn btn-danger-ghost" onClick={del} aria-label="Delete asset"><Trash2 size={16} /></button>}
         </>} />
 
       {h.reasons.length > 0 && (

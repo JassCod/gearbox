@@ -1,14 +1,16 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Bell, BellRing, Check, Clock, Download, Eye, FileArchive, FileImage, FileSpreadsheet, FileText, History,
-  MessageSquare, Paperclip, Pin, PinOff, Plus, Repeat, Sparkles, Trash2, Upload, Wrench, AlertTriangle, PenLine,
+  MessageSquare, Paperclip, Pin, PinOff, Plus, Repeat, Sparkles, Trash2, Upload, Wrench, AlertTriangle, PenLine, CheckCircle2, Loader2, XCircle, CloudUpload,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { usePermissions } from '../auth';
 import type { ActivityEvent, Attachment, EntityType, Priority, Reminder } from '../types';
 import { Badge, Empty, confirmAction } from './ui';
 import { addDays, daysUntil, fmtDate, relDays, todayISO, uid } from '../lib/utils';
+import { entityTitle } from '../lib/entities';
 
 export interface ItemTab {
   id: string;
@@ -42,6 +44,53 @@ interface Props {
   banner?: ReactNode;
 }
 
+
+// ---------- Upload queue (shared by the page-wide drop overlay and the Documents tab) ----------
+
+export interface UploadJob { id: string; name: string; size: number; status: 'uploading' | 'done' | 'error'; message?: string; category: string }
+export interface UploadMeta { category: string; expiry?: string; notes?: string }
+
+/** Best guess at a document category from the file itself, used for drag-and-drop anywhere on the page. */
+export function guessCategory(file: File): string {
+  const n = file.name.toLowerCase();
+  if (/invoice|receipt|bill|quote/.test(n)) return 'Invoice';
+  if (/rego|registration/.test(n)) return 'Registration';
+  if (/insur|policy/.test(n)) return 'Insurance';
+  if (/licen[cs]e/.test(n)) return 'Licence';
+  if (/cert|test|ticket/.test(n)) return 'Certificate';
+  if (/manual|guide|handbook/.test(n)) return 'Manual';
+  if (/service|logbook|job ?card/.test(n)) return 'Service record';
+  if (/contract|agreement|lease/.test(n)) return 'Contract';
+  if (/report|audit|inspection/.test(n)) return 'Report';
+  if (file.type.startsWith('image/') || /\.(heic|jpe?g|png|webp)$/.test(n)) return 'Photo';
+  return 'Other';
+}
+
+function useUploadQueue(entity: { type: EntityType; id: string }) {
+  const { addAttachment } = useStore();
+  const [jobs, setJobs] = useState<UploadJob[]>([]);
+  const upload = useCallback(async (files: FileList | File[], meta: UploadMeta) => {
+    const list = Array.from(files);
+    const queued = list.map((f) => ({ id: uid(), name: f.name, size: f.size, status: 'uploading' as const, category: meta.category === 'Auto' ? guessCategory(f) : meta.category }));
+    setJobs((j) => [...queued, ...j].slice(0, 12));
+    await Promise.all(list.map(async (f, i) => {
+      const job = queued[i];
+      try {
+        await addAttachment(entity.type, entity.id, f, { ...meta, category: job.category });
+        setJobs((j) => j.map((x) => (x.id === job.id ? { ...x, status: 'done' } : x)));
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : 'Upload failed';
+        const message = /bucket not found/i.test(raw) ? 'Document storage is not set up yet – an admin needs to re-run supabase/schema.sql in Supabase.' : raw;
+        setJobs((j) => j.map((x) => (x.id === job.id ? { ...x, status: 'error', message } : x)));
+      }
+    }));
+  }, [addAttachment, entity.type, entity.id]);
+  const clearDone = useCallback(() => setJobs((j) => j.filter((x) => x.status === 'uploading')), []);
+  return { jobs, upload, clearDone };
+}
+
+const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+
 /**
  * Full-page view for one record: a hero header plus tabs. Documents, reminders,
  * history and notes are added to every item automatically.
@@ -53,10 +102,15 @@ export function ItemPage({ entity, back, icon, eyebrow, title, subtitle, badges,
   const reminders = data.reminders.filter((r) => r.entityType === entity.type && r.entityId === entity.id);
   const notes = data.notes.filter((n) => n.entityType === entity.type && n.entityId === entity.id);
   const events = data.activity.filter((e) => e.entityType === entity.type && e.entityId === entity.id);
+  const perm = usePermissions();
+  const queue = useUploadQueue(entity);
+  const [dropping, setDropping] = useState(false);
+  const depth = useRef(0);
+  const canUpload = perm.canWrite('attachments');
 
   const allTabs: ItemTab[] = [
     ...tabs,
-    { id: 'documents', label: 'Documents', icon: <Paperclip size={15} />, count: docs.length, render: () => <DocumentsTab entity={entity} docs={docs} /> },
+    { id: 'documents', label: 'Documents', icon: <Paperclip size={15} />, count: docs.length, render: () => <DocumentsTab entity={entity} docs={docs} queue={queue} /> },
     { id: 'reminders', label: 'Reminders', icon: <Bell size={15} />, count: reminders.filter((r) => !r.done).length, render: () => <RemindersTab entity={entity} reminders={reminders} /> },
     { id: 'history', label: 'History', icon: <History size={15} />, render: () => <HistoryTab events={[...events, ...historyExtras]} /> },
     { id: 'notes', label: 'Notes', icon: <MessageSquare size={15} />, count: notes.length, render: () => <NotesTab entity={entity} /> },
@@ -68,8 +122,33 @@ export function ItemPage({ entity, back, icon, eyebrow, title, subtitle, badges,
     setParams(next, { replace: true });
   };
 
+  // Drag files anywhere over the page: show an overlay, upload on drop, then jump to the Documents tab.
+  const dragProps = canUpload ? {
+    onDragEnter: (e: React.DragEvent) => { if (!hasFiles(e)) return; e.preventDefault(); depth.current += 1; setDropping(true); },
+    onDragOver: (e: React.DragEvent) => { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } },
+    onDragLeave: (e: React.DragEvent) => { if (!hasFiles(e)) return; depth.current = Math.max(0, depth.current - 1); if (depth.current === 0) setDropping(false); },
+    onDrop: (e: React.DragEvent) => {
+      if (!hasFiles(e) || e.defaultPrevented) return;
+      e.preventDefault(); depth.current = 0; setDropping(false);
+      if (e.dataTransfer.files.length) {
+        queue.upload(e.dataTransfer.files, { category: 'Auto' });
+        if (active.id !== 'documents') select('documents');
+      }
+    },
+  } : {};
+
   return (
-    <div className="item-page">
+    <div className={`item-page ${dropping ? 'page-drag' : ''}`} {...dragProps}>
+      {dropping && active.id !== 'documents' && createPortal(
+        <div className="drop-overlay" aria-live="polite">
+          <div className="drop-overlay-inner">
+            <CloudUpload size={46} />
+            <strong>Drop to attach to {entityTitle(data, entity.type, entity.id)}</strong>
+            <span>Files are sorted into a category automatically – you can filter them on the Documents tab.</span>
+          </div>
+        </div>,
+        document.body,
+      )}
       <Link to={back.to} className="link small back"><ArrowLeft size={14} /> {back.label}</Link>
       <header className={`hero accent-${accent}`}>
         <div className="hero-glow" aria-hidden />
@@ -137,30 +216,37 @@ function fileIcon(mime: string) {
 
 const fmtSize = (n: number) => (n > 1_000_000 ? `${(n / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1000))} KB`);
 
-export function DocumentsTab({ entity, docs }: { entity: { type: EntityType; id: string }; docs: Attachment[] }) {
-  const { addAttachment, removeAttachment, attachmentUrl } = useStore();
+export function DocumentsTab({ docs, queue }: { entity: { type: EntityType; id: string }; docs: Attachment[]; queue: ReturnType<typeof useUploadQueue> }) {
+  const { removeAttachment, attachmentUrl } = useStore();
   const perm = usePermissions();
   const input = useRef<HTMLInputElement>(null);
-  const [category, setCategory] = useState('Other');
+  const [category, setCategory] = useState('Auto');
   const [expiry, setExpiry] = useState('');
   const [notes, setNotes] = useState('');
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [drag, setDrag] = useState(false);
   const [filter, setFilter] = useState('all');
   const canUpload = perm.canWrite('attachments');
+  const busy = queue.jobs.some((j) => j.status === 'uploading');
 
-  const upload = async (files: FileList | File[]) => {
-    setError(''); setBusy(true);
-    try {
-      for (const f of Array.from(files)) await addAttachment(entity.type, entity.id, f, { category, expiry, notes });
-      setNotes(''); setExpiry('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
-    } finally {
-      setBusy(false);
-    }
+  const upload = (files: FileList | File[]) => {
+    setError('');
+    queue.upload(files, { category, expiry, notes });
+    setNotes(''); setExpiry('');
   };
+
+  // Paste screenshots or copied files straight into the Documents tab.
+  useEffect(() => {
+    if (!canUpload) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && /INPUT|TEXTAREA/.test(target.tagName)) return;
+      const files = Array.from(e.clipboardData?.files ?? []);
+      if (files.length) { e.preventDefault(); upload(files.map((f, i) => (f.name === 'image.png' ? new File([f], `Pasted image ${new Date().toLocaleString().replace(/[/:]/g, '-')}${i ? `-${i}` : ''}.png`, { type: f.type }) : f))); }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  });
 
   const open = async (a: Attachment, download = false) => {
     try {
@@ -189,8 +275,23 @@ export function DocumentsTab({ entity, docs }: { entity: { type: EntityType; id:
           </div>
         )}
         {error && <div className="banner tone-bad">{error}</div>}
+        {queue.jobs.length > 0 && (
+          <div className="card upload-queue">
+            <div className="row between"><strong className="small">Uploads</strong>{!busy && <button className="link-btn small" onClick={queue.clearDone}>Clear</button>}</div>
+            <ul>
+              {queue.jobs.map((j) => (
+                <li key={j.id} className={`uq-${j.status}`}>
+                  {j.status === 'uploading' ? <Loader2 size={16} className="spin" /> : j.status === 'done' ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                  <div className="grow"><span className="uq-name">{j.name}</span><span className="small muted"> · {fmtSize(j.size)} · {j.category}</span>
+                    {j.message && <div className="small tone-text-bad">{j.message}</div>}</div>
+                  {j.status === 'uploading' && <div className="uq-bar"><i /></div>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {shown.length === 0 ? (
-          <div className="card"><Empty icon={<Paperclip size={32} />} title="No documents yet">Upload registration papers, invoices, photos, certificates – anything that belongs to this item.</Empty></div>
+          <div className="card"><Empty icon={<Paperclip size={32} />} title="No documents yet">Drag files anywhere onto this page, paste a screenshot (Ctrl+V), or use the upload box.</Empty></div>
         ) : (
           <div className="doc-grid">
             {shown.map((a) => {
@@ -227,14 +328,18 @@ export function DocumentsTab({ entity, docs }: { entity: { type: EntityType; id:
           <div className={`dropzone ${drag ? 'drag' : ''} ${busy ? 'busy' : ''}`}
             onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
             onDrop={(e) => { e.preventDefault(); setDrag(false); if (e.dataTransfer.files.length) upload(e.dataTransfer.files); }}
-            onClick={() => input.current?.click()} role="button" tabIndex={0}>
-            <Upload size={26} />
-            <strong>{busy ? 'Uploading…' : 'Drop files here'}</strong>
-            <span className="small muted">or click to browse</span>
+            onClick={() => input.current?.click()} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && input.current?.click()} role="button" tabIndex={0}>
+            <span className="dz-icon"><CloudUpload size={30} /></span>
+            <strong>{busy ? 'Uploading…' : drag ? 'Release to upload' : 'Drag & drop files here'}</strong>
+            <span className="small muted">or <u>click to browse</u> · paste with Ctrl+V</span>
+            <span className="small muted">PDF, images, spreadsheets – several at once</span>
           </div>
           <input ref={input} type="file" multiple hidden onChange={(e) => { if (e.target.files?.length) upload(e.target.files); e.target.value = ''; }} />
           <label className="field"><span>Category</span>
-            <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>{DOC_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
+            <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="Auto">Auto-detect from file name</option>
+              {DOC_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+            </select>
           </label>
           <label className="field"><span>Expiry date (optional)</span><input className="input" type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></label>
           <label className="field"><span>Notes (optional)</span><input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} /></label>

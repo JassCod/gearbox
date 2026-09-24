@@ -75,6 +75,14 @@ export function Layout({ children }: { children: ReactNode }) {
 
   useEffect(() => { setNavOpen(false); window.scrollTo({ top: 0 }); }, [location.pathname]);
 
+  // Never let a file dropped outside an upload area open in (and navigate away from) the tab.
+  useEffect(() => {
+    const block = (e: DragEvent) => { if (Array.from(e.dataTransfer?.types ?? []).includes('Files')) e.preventDefault(); };
+    window.addEventListener('dragover', block);
+    window.addEventListener('drop', block);
+    return () => { window.removeEventListener('dragover', block); window.removeEventListener('drop', block); };
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((p) => !p); }

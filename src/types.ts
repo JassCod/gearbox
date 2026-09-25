@@ -133,6 +133,10 @@ export interface Driver {
   medicalExpiry: string;
   depot: string;
   trainings: Training[];
+  /** Employee number and state, shown as NAME STATE [number] in pickers. */
+  employeeNo?: string;
+  state?: string;
+  position?: string;
 }
 
 export interface FuelEntry {
@@ -151,59 +155,68 @@ export interface Settings {
   labourRate: number;
   checklist: string[];
   depots: string[];
+  /** NCR lookups – admin-editable. */
+  ncrSchemes: string[];
+  ncrCategories: string[];
+  ncrTypes: string[];
 }
 
 // ---------- Compliance ----------
 
-export type NcrStatus = 'open' | 'investigating' | 'action' | 'verification' | 'closed';
-export type NcrSource = 'Defect' | 'Audit' | 'Inspection' | 'Customer complaint' | 'Incident' | 'Internal';
-export type NcrCategory = 'Vehicle safety' | 'Maintenance' | 'Documentation' | 'Driver behaviour' | 'Load restraint'
-  | 'Environmental' | 'Supplier' | 'Process';
-export type RootCauseCategory = 'People' | 'Process' | 'Equipment' | 'Materials' | 'Environment' | 'Management';
-
-export interface CapaAction {
-  id: ID;
-  type: 'corrective' | 'preventive';
-  description: string;
-  owner: string;
-  dueDate: string;
-  done: boolean;
-  doneAt?: string;
-}
-
+/** A non-conformance report (NCR / SFI). Lookup fields store the lookup's name. */
 export interface Ncr {
   id: ID;
+  /** Sequential, unique – shown as NCR-{number}. */
   number: number;
-  title: string;
-  description: string;
-  category: NcrCategory;
-  source: NcrSource;
-  severity: Severity;
-  /** 1 (rare) … 5 (almost certain) */
-  likelihood: number;
-  /** 1 (negligible) … 5 (catastrophic) */
-  impact: number;
-  status: NcrStatus;
-  raisedBy: string;
-  raisedAt: string;
-  dueDate: string;
-  owner: string;
+  schemeType: string;
+  /** "Category" on screen (NCR/SFI type). */
+  category: string;
+  /** "Type" on screen. */
+  ncrType: string;
+  /** The employee the NCR is about (a person on the Drivers & staff register). */
+  employeeId?: ID;
+  contractorId?: ID;
   vehicleId?: ID;
-  driverId?: ID;
+  pageNumber: string;
+  /** "More information": the fit-for-duty (pre-start) check and the related event. */
+  fitForDutyId?: ID;
   defectId?: ID;
   auditId?: ID;
   workOrderId?: ID;
-  containment: string;
-  whys: string[];
-  rootCause: string;
-  rootCauseCategory?: RootCauseCategory;
-  actions: CapaAction[];
-  verificationMethod: string;
-  verificationResult: string;
-  effective?: boolean;
-  verifiedBy?: string;
-  verifiedAt?: string;
-  closedAt?: string;
+  // 1. Problem / details of non-conformance
+  problem: string;
+  reportedDate: string;
+  reportedBy: string;
+  // 2. Short term fix / remedial action
+  shortTerm: string;
+  shortTermDate: string;
+  shortTermBy: string;
+  // 3. Cause of problem
+  cause: string;
+  causeDate: string;
+  causeBy: string;
+  // 4. Long term fix / preventative action
+  longTerm: string;
+  longTermDate: string;
+  longTermBy: string;
+  // Closure
+  closed: boolean;
+  closedDate: string;
+  closedBy: string;
+  closedPosition: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface Contractor {
+  id: ID;
+  name: string;
+  abn?: string;
+  contact?: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
+  active: boolean;
 }
 
 export type AuditResult = 'pass' | 'fail' | 'na' | null;
@@ -299,6 +312,7 @@ export interface AppData {
   drivers: Driver[];
   fuel: FuelEntry[];
   ncrs: Ncr[];
+  contractors: Contractor[];
   audits: Audit[];
   attachments: Attachment[];
   reminders: Reminder[];

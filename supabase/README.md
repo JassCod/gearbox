@@ -15,7 +15,7 @@ Torqline uses [Supabase](https://supabase.com), which provides a hosted Postgres
 
 This creates the tables, the role-based security rules, the activity log and live updates. It's safe to run again later.
 
-> **Updating from an earlier version?** Run `schema.sql` again. It's safe to re-run, and it adds what the newer features need: NCRs, audits, documents, reminders, notes, item history and the private `documents` storage bucket for uploaded files.
+> **Updating from an earlier version?** Run `schema.sql` again. It's safe to re-run, and it adds what the newer features need: NCRs, contractors, audits, documents, reminders, notes, item history and the private `documents` storage bucket for uploaded files. NCRs saved by earlier versions are converted to the new format automatically when the app loads them.
 
 ## 3. Tell Supabase where the app lives
 

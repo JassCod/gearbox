@@ -15,7 +15,7 @@ const WRITE: Record<Role, CollectionKey[] | 'all'> = {
   admin: 'all',
   manager: 'all',
   technician: ['vehicles', 'schedules', 'workOrders', 'defects', 'checks', 'parts', 'fuel',
-    'ncrs', 'audits', 'attachments', 'reminders', 'notes', 'activity'],
+    'ncrs', 'contractors', 'audits', 'attachments', 'reminders', 'notes', 'activity'],
   driver: ['vehicles', 'checks', 'defects', 'fuel', 'attachments', 'notes', 'activity'],
   viewer: [],
   pending: [],

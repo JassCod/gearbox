@@ -43,7 +43,7 @@ export default function Drivers() {
                 <div className="row between">
                   <div className="row gap-sm">
                     <span className={`avatar ring-${worst}`}>{initials(d.name)}</span>
-                    <div><strong>{d.name}</strong><div className="small muted">{d.depot} · Licence {d.licenceClass}</div></div>
+                    <div><strong>{d.name}</strong><div className="small muted">{d.depot} · Licence {d.licenceClass}{d.employeeNo ? ` · #${d.employeeNo}` : ''}</div></div>
                   </div>
                   <Badge value={worst} label={worst === 'ok' ? 'Compliant' : worst === 'overdue' ? 'Expired docs' : 'Expiring'} />
                 </div>
@@ -101,6 +101,9 @@ function DriverFields({ d, set }: { d: Driver; set: <K extends keyof Driver>(k: 
       <Field label="Depot">
         <select className="input" value={d.depot} onChange={(e) => set('depot', e.target.value)}>{data.settings.depots.map((x) => <option key={x}>{x}</option>)}</select>
       </Field>
+      <Field label="Employee number"><input className="input" value={d.employeeNo ?? ''} placeholder="e.g. 717" onChange={(e) => set('employeeNo', e.target.value || undefined)} /></Field>
+      <Field label="State"><input className="input" value={d.state ?? ''} placeholder="e.g. VIC" maxLength={4} onChange={(e) => set('state', e.target.value.toUpperCase() || undefined)} /></Field>
+      <Field label="Position"><input className="input" value={d.position ?? ''} placeholder="e.g. Linehaul driver" onChange={(e) => set('position', e.target.value || undefined)} /></Field>
       <Field label="Phone"><input className="input" type="tel" value={d.phone} onChange={(e) => set('phone', e.target.value)} /></Field>
       <Field label="Email"><input className="input" type="email" value={d.email} onChange={(e) => set('email', e.target.value)} /></Field>
       <Field label="Licence class"><input className="input" value={d.licenceClass} onChange={(e) => set('licenceClass', e.target.value)} /></Field>
@@ -144,7 +147,7 @@ export function DriverDetail() {
   const vehicles = data.vehicles.filter((v) => v.driverId === d.id);
   const checks = data.checks.filter((c) => c.driverId === d.id).sort((a, b) => b.date.localeCompare(a.date));
   const defects = data.defects.filter((x) => x.driverId === d.id);
-  const ncrs = data.ncrs.filter((n) => n.driverId === d.id);
+  const ncrs = data.ncrs.filter((n) => n.employeeId === d.id);
   const passRate = checks.length ? Math.round((checks.filter((c) => c.passed).length / checks.length) * 100) : null;
   const set = <K extends keyof Driver>(k: K, v: Driver[K]) => setDraft((x) => (x ? { ...x, [k]: v } : x));
 
@@ -235,7 +238,7 @@ export function DriverDetail() {
               <Card title="Defects & NCRs">
                 <ul className="list">
                   {defects.map((x) => <li key={x.id}><Link className="link" to={`/defects/${x.id}`}>{x.item} – {byId(data.vehicles, x.vehicleId)?.rego}</Link><Badge value={x.status} /></li>)}
-                  {ncrs.map((n) => <li key={n.id}><Link className="link" to={`/ncr/${n.id}`}>NCR-{n.number} {n.title}</Link><Badge value={n.status} /></li>)}
+                  {ncrs.map((n) => <li key={n.id}><Link className="link" to={`/ncr/${n.id}`}>NCR-{n.number} {n.ncrType}</Link><Badge value={n.closed ? 'closed' : 'open'} /></li>)}
                   {defects.length + ncrs.length === 0 && <li className="muted">Nothing reported.</li>}
                 </ul>
               </Card>

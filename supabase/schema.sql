@@ -33,7 +33,7 @@ create table if not exists public.records (
 alter table public.records drop constraint if exists records_collection_check;
 alter table public.records add constraint records_collection_check
   check (collection in ('vehicles', 'schedules', 'workOrders', 'defects', 'checks', 'parts', 'drivers', 'fuel',
-                                 'ncrs', 'audits', 'attachments', 'reminders', 'notes', 'activity'));
+                                 'ncrs', 'contractors', 'audits', 'attachments', 'reminders', 'notes', 'activity'));
 
 create table if not exists public.app_settings (
   id         int primary key default 1 check (id = 1),
@@ -73,7 +73,7 @@ returns boolean language sql stable security definer set search_path = public as
     when 'admin'      then true
     when 'manager'    then true
     when 'technician' then target in ('vehicles', 'schedules', 'workOrders', 'defects', 'checks', 'parts', 'fuel',
-                                      'ncrs', 'audits', 'attachments', 'reminders', 'notes', 'activity')
+                                      'ncrs', 'contractors', 'audits', 'attachments', 'reminders', 'notes', 'activity')
     -- Drivers submit checks, defects and fuel; those also bump the vehicle odometer.
     when 'driver'     then target in ('vehicles', 'checks', 'defects', 'fuel', 'attachments', 'notes', 'activity')
     else false
@@ -154,6 +154,7 @@ begin
     end if;
     row_data := case when tg_op = 'DELETE' then old.data else new.data end;
     label := coalesce(
+      case when (case when tg_op = 'DELETE' then old.collection else new.collection end) = 'ncrs' then 'NCR-' || (row_data ->> 'number') || ' ' || coalesce(row_data ->> 'ncrType', '') end,
       case when row_data ? 'number' then '#' || (row_data ->> 'number') || ' ' || coalesce(row_data ->> 'title', '') end,
       row_data ->> 'title', row_data ->> 'rego', row_data ->> 'name', row_data ->> 'item', row_data ->> 'sku',
       left(row_data ->> 'text', 60),

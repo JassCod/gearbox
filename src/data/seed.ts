@@ -1,8 +1,9 @@
 import type {
-  ActivityEvent, AppData, Attachment, Audit, Defect, Driver, FuelEntry, Ncr, Note, Part, PrestartCheck, Reminder, ServiceSchedule, Vehicle, WorkOrder,
+  ActivityEvent, AppData, Attachment, Audit, Contractor, Defect, Driver, FuelEntry, Ncr, Note, Part, PrestartCheck, Reminder, ServiceSchedule, Vehicle, WorkOrder,
 } from '../types';
 import { addDays, todayISO } from '../lib/utils';
 import { AUDIT_TEMPLATES } from '../lib/compliance';
+import { DEFAULT_NCR_CATEGORIES, DEFAULT_NCR_SCHEMES, DEFAULT_NCR_TYPES } from '../lib/ncr';
 
 export const DEFAULT_CHECKLIST = [
   'Tyres & wheel nuts',
@@ -31,12 +32,12 @@ export function createSeed(): AppData {
   const rand = rng(42);
 
   const drivers: Driver[] = [
-    { id: 'd1', name: 'Maya Thompson', phone: '0412 555 101', email: 'maya@example.com', licenceClass: 'HR', licenceExpiry: d(410), medicalExpiry: d(120), depot: 'North Yard', trainings: [{ name: 'Fatigue management', expiry: d(200) }, { name: 'Forklift', expiry: d(22) }] },
-    { id: 'd2', name: 'Liam Carter', phone: '0412 555 102', email: 'liam@example.com', licenceClass: 'MR', licenceExpiry: d(18), medicalExpiry: d(300), depot: 'North Yard', trainings: [{ name: 'Fatigue management', expiry: d(-5) }] },
-    { id: 'd3', name: 'Priya Nair', phone: '0412 555 103', email: 'priya@example.com', licenceClass: 'HC', licenceExpiry: d(700), medicalExpiry: d(250), depot: 'South Depot', trainings: [{ name: 'Dangerous goods', expiry: d(90) }] },
-    { id: 'd4', name: 'Noah Kim', phone: '0412 555 104', email: 'noah@example.com', licenceClass: 'C', licenceExpiry: d(900), medicalExpiry: d(500), depot: 'South Depot', trainings: [] },
-    { id: 'd5', name: 'Sofia Rossi', phone: '0412 555 105', email: 'sofia@example.com', licenceClass: 'LR', licenceExpiry: d(330), medicalExpiry: d(-12), depot: 'City Hub', trainings: [{ name: 'First aid', expiry: d(160) }] },
-    { id: 'd6', name: 'Ethan Walker', phone: '0412 555 106', email: 'ethan@example.com', licenceClass: 'HR', licenceExpiry: d(520), medicalExpiry: d(190), depot: 'City Hub', trainings: [{ name: 'Excavator ticket', expiry: d(365) }] },
+    { id: 'd1', name: 'Maya Thompson', employeeNo: '717', state: 'VIC', phone: '0412 555 101', email: 'maya@example.com', licenceClass: 'HR', licenceExpiry: d(410), medicalExpiry: d(120), depot: 'North Yard', trainings: [{ name: 'Fatigue management', expiry: d(200) }, { name: 'Forklift', expiry: d(22) }] },
+    { id: 'd2', name: 'Liam Carter', employeeNo: '722', state: 'VIC', phone: '0412 555 102', email: 'liam@example.com', licenceClass: 'MR', licenceExpiry: d(18), medicalExpiry: d(300), depot: 'North Yard', trainings: [{ name: 'Fatigue management', expiry: d(-5) }] },
+    { id: 'd3', name: 'Priya Nair', employeeNo: '341', state: 'NSW', phone: '0412 555 103', email: 'priya@example.com', licenceClass: 'HC', licenceExpiry: d(700), medicalExpiry: d(250), depot: 'South Depot', trainings: [{ name: 'Dangerous goods', expiry: d(90) }] },
+    { id: 'd4', name: 'Noah Kim', employeeNo: '356', state: 'NSW', phone: '0412 555 104', email: 'noah@example.com', licenceClass: 'C', licenceExpiry: d(900), medicalExpiry: d(500), depot: 'South Depot', trainings: [] },
+    { id: 'd5', name: 'Sofia Rossi', employeeNo: '508', state: 'QLD', phone: '0412 555 105', email: 'sofia@example.com', licenceClass: 'LR', licenceExpiry: d(330), medicalExpiry: d(-12), depot: 'City Hub', trainings: [{ name: 'First aid', expiry: d(160) }] },
+    { id: 'd6', name: 'Ethan Walker', employeeNo: '512', state: 'QLD', phone: '0412 555 106', email: 'ethan@example.com', licenceClass: 'HR', licenceExpiry: d(520), medicalExpiry: d(190), depot: 'City Hub', trainings: [{ name: 'Excavator ticket', expiry: d(365) }] },
   ];
 
   const vehicles: Vehicle[] = [
@@ -168,37 +169,48 @@ export function createSeed(): AppData {
       items: fromTemplate(3, ['pass', 'pass', 'fail', 'pass', null, null, null, null, null], { 2: 'UTE-301 service not yet booked' }) },
   ];
 
+  const contractors: Contractor[] = [
+    { id: 'c1', name: 'Southern Cross Linehaul', abn: '51 824 753 556', contact: 'Dev Patel', phone: '03 9555 0142', email: 'ops@southerncrosslinehaul.example', active: true },
+    { id: 'c2', name: 'Ridgeway Freight Services', abn: '33 051 775 556', contact: 'Hannah Brooks', phone: '02 9555 0187', email: 'dispatch@ridgewayfreight.example', active: true },
+    { id: 'c3', name: 'Bayside Express Logistics', abn: '12 004 044 937', contact: 'Tom Nguyen', phone: '07 3555 0119', email: 'hello@baysideexpress.example', active: true },
+  ];
+
+  const ncr = (x: Partial<Ncr> & Pick<Ncr, 'id' | 'number'>): Ncr => ({
+    schemeType: '', category: 'Non Conformance', ncrType: '', pageNumber: '', problem: '', reportedDate: '', reportedBy: '',
+    shortTerm: '', shortTermDate: '', shortTermBy: '', cause: '', causeDate: '', causeBy: '', longTerm: '', longTermDate: '', longTermBy: '',
+    closed: false, closedDate: '', closedBy: '', closedPosition: '', createdAt: `${x.reportedDate ?? t}T09:00:00.000Z`, createdBy: x.reportedBy ?? 'Alex (Ops)', ...x,
+  });
   const ncrs: Ncr[] = [
-    { id: 'n1', number: 101, title: 'Trailer operated with tyres below legal tread', description: 'Roadworthiness inspection AUD-11 found two tyres on TRL-501 at 1.2 mm tread, below the 1.5 mm legal minimum. Trailer had completed 3 runs that week.',
-      category: 'Vehicle safety', source: 'Audit', severity: 'critical', likelihood: 3, impact: 5, status: 'action', raisedBy: 'Priya Nair', raisedAt: d(-10), dueDate: d(4), owner: 'Maya Thompson',
-      vehicleId: 'v8', auditId: 'a1', defectId: 'df3', workOrderId: 'w3',
-      containment: 'Trailer tagged out of service and parked in North Yard bay 4. All other trailers spot-checked – no further issues.',
-      whys: ['Tyres wore below limit without being noticed', 'Trailer has no pre-start check – only the prime mover is checked', 'The pre-start checklist is vehicle-based and trailers are not in the driver app', 'Trailers were added to the fleet without updating the check process', ''],
-      rootCause: 'The pre-start process does not cover trailers, so tread wear was only found at the quarterly inspection.', rootCauseCategory: 'Process',
-      actions: [
-        { id: 'ca1', type: 'corrective', description: 'Replace both worn tyres (WO #1043)', owner: 'RoadGrip mobile', dueDate: d(3), done: false },
-        { id: 'ca2', type: 'preventive', description: 'Add trailers to the pre-start checklist and driver app', owner: 'Maya Thompson', dueDate: d(10), done: true, doneAt: d(-2) },
-        { id: 'ca3', type: 'preventive', description: 'Brief all drivers on trailer tyre checks at toolbox meeting', owner: 'Maya Thompson', dueDate: d(7), done: false },
-      ], verificationMethod: 'Check 2 weeks of trailer pre-start records after roll-out', verificationResult: '' },
-    { id: 'n2', number: 102, title: 'Empty spill kit in workshop bay 2', description: 'Monthly safety walk found the spill kit next to bay 2 empty after an oil spill on Tuesday.',
-      category: 'Environmental', source: 'Audit', severity: 'minor', likelihood: 3, impact: 2, status: 'verification', raisedBy: 'Maya Thompson', raisedAt: d(-4), dueDate: d(3), owner: 'Sam (Workshop)', auditId: 'a2',
-      containment: 'Borrowed spill kit from bay 1 until restocked.', whys: ['Kit was used and not restocked', 'No one is responsible for restocking', 'Not on any checklist', '', ''],
-      rootCause: 'Spill kit restocking has no owner or trigger.', rootCauseCategory: 'Management',
-      actions: [
-        { id: 'ca4', type: 'corrective', description: 'Restock spill kit', owner: 'Sam (Workshop)', dueDate: d(-3), done: true, doneAt: d(-3) },
-        { id: 'ca5', type: 'preventive', description: 'Add spill kit check to weekly workshop checklist', owner: 'Sam (Workshop)', dueDate: d(-1), done: true, doneAt: d(-1) },
-      ], verificationMethod: 'Inspect kit at next weekly check', verificationResult: 'Kit full at weekly check; item now on checklist.', effective: true },
-    { id: 'n3', number: 103, title: 'Driver medical certificate expired', description: 'Sofia Rossi medical certificate expired 12 days ago and she continued driving VAN-201.',
-      category: 'Documentation', source: 'Internal', severity: 'major', likelihood: 2, impact: 4, status: 'investigating', raisedBy: 'Alex (Ops)', raisedAt: d(-2), dueDate: d(-1), owner: 'Alex (Ops)', driverId: 'd5', vehicleId: 'v3',
-      containment: 'Driver moved to yard duties until renewed certificate is supplied.', whys: ['Expiry was not noticed', 'Reminders go to a shared inbox nobody watches', '', '', ''], rootCause: '', actions: [], verificationMethod: '', verificationResult: '' },
-    { id: 'n4', number: 104, title: 'Customer reported unsecured load on TRK-103', description: 'Customer at delivery site reported a pallet had shifted and straps were loose on arrival.',
-      category: 'Load restraint', source: 'Customer complaint', severity: 'major', likelihood: 2, impact: 4, status: 'open', raisedBy: 'Alex (Ops)', raisedAt: d(-1), dueDate: d(13), owner: '', vehicleId: 'v11',
-      containment: '', whys: ['', '', '', '', ''], rootCause: '', actions: [], verificationMethod: '', verificationResult: '' },
-    { id: 'n5', number: 99, title: 'Forklift operated without current licence', description: 'Casual operator used FLT-601 without a current high-risk work licence.',
-      category: 'Driver behaviour', source: 'Incident', severity: 'major', likelihood: 2, impact: 3, status: 'closed', raisedBy: 'Maya Thompson', raisedAt: d(-60), dueDate: d(-40), owner: 'Maya Thompson', vehicleId: 'v9',
-      containment: 'Operator stood down immediately.', whys: ['Operator was not checked before use', 'Keys left in forklift', 'No key control', '', ''], rootCause: 'No key control on forklift allowed unlicensed use.', rootCauseCategory: 'Process',
-      actions: [{ id: 'ca6', type: 'corrective', description: 'Install key safe with licence register', owner: 'Maya Thompson', dueDate: d(-50), done: true, doneAt: d(-52) }],
-      verificationMethod: 'Spot check key register for 4 weeks', verificationResult: 'All uses logged against licensed operators.', effective: true, verifiedBy: 'Maya Thompson', verifiedAt: d(-41), closedAt: d(-41) },
+    ncr({ id: 'n1', number: 1561, schemeType: 'NHVAS Maintenance', category: 'Non Conformance', ncrType: 'Defect', vehicleId: 'v8', auditId: 'a1', defectId: 'df3', workOrderId: 'w3',
+      problem: 'Roadworthiness inspection AUD-11 found two tyres on TRL-501 at 1.2 mm tread, below the 1.5 mm legal minimum.\nTrailer had completed 3 runs that week.',
+      reportedDate: d(-10), reportedBy: 'Priya Nair',
+      shortTerm: 'Trailer tagged out of service and parked in North Yard bay 4.\nAll other trailers spot-checked – no further issues.', shortTermDate: d(-10), shortTermBy: 'Maya Thompson',
+      cause: 'Trailers are not on the pre-start checklist – only the prime mover is checked, so tread wear was only found at the quarterly inspection.', causeDate: d(-6), causeBy: 'Maya Thompson' }),
+    ncr({ id: 'n2', number: 1562, schemeType: 'NHVAS Fatigue', category: 'Breach (Infringement Notices)', ncrType: 'Work Diary Pages (Log Book)', employeeId: 'd2', vehicleId: 'v4', pageNumber: '0048213',
+      problem: 'Work diary review found the following breaches:\n\nDate        Rule                         Detail\n' + `${d(-9).split('-').reverse().join('/')}  Max work in 24 h             12 h 45 m worked (limit 12 h)\n${d(-8).split('-').reverse().join('/')}  Continuous 7 h rest          6 h 20 m rest taken\n${d(-8).split('-').reverse().join('/')}  Page not signed              Page 0048213 unsigned`,
+      reportedDate: d(-7), reportedBy: 'Sofia Rossi',
+      shortTerm: 'Driver interviewed and stood down for a 24 hour reset. Rosters for the week adjusted.', shortTermDate: d(-7), shortTermBy: 'Alex (Ops)' }),
+    ncr({ id: 'n3', number: 1563, schemeType: 'Speed Management', category: 'Non Conformance', ncrType: 'Speeding', employeeId: 'd4', vehicleId: 'v5',
+      problem: 'Telematics alert: UTE-301 recorded 78 km/h in a 60 km/h zone on Princes Hwy for 2.1 km.', reportedDate: d(-5), reportedBy: 'Alex (Ops)' }),
+    ncr({ id: 'n4', number: 1564, schemeType: 'HACCP', category: 'Corrective Action Report', ncrType: 'HACCP-Logistics & Handling', vehicleId: 'v12', contractorId: 'c3',
+      problem: 'Customer rejected chilled load on arrival – probe temperature 9.4 °C against a 5 °C limit.\nDoors were opened for 25 minutes at the previous drop.', reportedDate: d(-3), reportedBy: 'Liam Carter',
+      shortTerm: 'Load quarantined and returned to cold store for assessment. Customer credited.', shortTermDate: d(-3), shortTermBy: 'Alex (Ops)',
+      cause: 'Driver unloaded a multi-drop order with the rear doors open instead of using the side door and strip curtain.', causeDate: d(-2), causeBy: 'Sofia Rossi' }),
+    ncr({ id: 'n5', number: 1565, schemeType: 'National Road Rules', category: 'Breach (Infringement Notices)', ncrType: 'Mobile Phone', employeeId: 'd6', vehicleId: 'v10',
+      problem: 'Infringement notice received: driver detected by camera holding a mobile phone while driving.', reportedDate: d(-2), reportedBy: 'Alex (Ops)' }),
+    ncr({ id: 'n6', number: 1566, schemeType: 'NHVAS Mass', category: 'Non Conformance', ncrType: 'Overload', employeeId: 'd3', vehicleId: 'v11', contractorId: 'c1',
+      problem: 'Weighbridge docket shows drive axle group at 17.4 t against a 16.5 t limit. Load supplied by contractor.', reportedDate: d(-1), reportedBy: 'Priya Nair' }),
+    ncr({ id: 'n7', number: 1560, schemeType: 'NHVAS Maintenance', category: 'Non Conformance', ncrType: 'Pre Start Check', employeeId: 'd1', vehicleId: 'v1',
+      problem: 'Pre-start checks not completed for TRK-101 on three consecutive days.', reportedDate: d(-40), reportedBy: 'Alex (Ops)',
+      shortTerm: 'Driver reminded of the requirement; checks completed before the next shift.', shortTermDate: d(-40), shortTermBy: 'Alex (Ops)',
+      cause: 'Driver app had logged out after an update and the driver did not know how to sign back in.', causeDate: d(-38), causeBy: 'Maya Thompson',
+      longTerm: 'IT pushed a fix so the app keeps drivers signed in. Toolbox talk on pre-start requirements held with all drivers.', longTermDate: d(-30), longTermBy: 'Maya Thompson',
+      closed: true, closedDate: d(-28), closedBy: 'Maya Thompson', closedPosition: 'Compliance Manager' }),
+    ncr({ id: 'n8', number: 1559, schemeType: 'NHVR Notice to Produce', category: 'Other Notices', ncrType: 'Notice to Produce', vehicleId: 'v2',
+      problem: 'NHVR notice to produce maintenance records for TRK-102 within 14 days.', reportedDate: d(-60), reportedBy: 'Alex (Ops)',
+      shortTerm: 'Service history and defect records compiled from Torqline and sent to NHVR.', shortTermDate: d(-55), shortTermBy: 'Alex (Ops)',
+      cause: 'Random audit – no fault found.', causeDate: d(-55), causeBy: 'Alex (Ops)', longTerm: 'No further action required.', longTermDate: d(-50), longTermBy: 'Alex (Ops)',
+      closed: true, closedDate: d(-50), closedBy: 'Alex (Ops)', closedPosition: 'Operations Manager' }),
   ];
   audits[0].items[3].ncrId = 'n1';
   audits[1].items[1].ncrId = 'n2';
@@ -215,7 +227,7 @@ export function createSeed(): AppData {
   const notes: Note[] = [
     { id: 'no1', entityType: 'vehicle', entityId: 'v2', text: 'Air dryer was replaced last year – check warranty before buying a new one.', at: `${d(-30)}T09:12:00.000Z`, by: 'Sam (Workshop)', pinned: true },
     { id: 'no2', entityType: 'workOrder', entityId: 'w1', text: 'Diaphragm arrived from StopRight, fitting this afternoon.', at: `${d(-1)}T13:40:00.000Z`, by: 'Sam (Workshop)' },
-    { id: 'no3', entityType: 'ncr', entityId: 'n1', text: 'Discussed at safety committee – agreed trailers need their own check sheet.', at: `${d(-3)}T15:05:00.000Z`, by: 'Maya Thompson' },
+    { id: 'no3', entityType: 'ncr', entityId: 'n1', text: 'Discussed at safety committee – agreed trailers need their own check sheet.', at: `${d(-3)}T15:05:00.000Z`, by: 'Maya Thompson', pinned: true },
     { id: 'no4', entityType: 'driver', entityId: 'd5', text: 'Doctor appointment booked for Friday to renew medical.', at: `${d(-1)}T08:20:00.000Z`, by: 'Alex (Ops)' },
   ];
 
@@ -224,7 +236,7 @@ export function createSeed(): AppData {
     { id: 'at2', entityType: 'vehicle', entityId: 'v1', name: 'Fleet insurance policy 2026.pdf', category: 'Insurance', mime: 'application/pdf', size: 912_000, storage: 'none', expiry: vehicles[0].insuranceExpiry, uploadedAt: `${d(-160)}T10:00:00.000Z`, uploadedBy: 'Alex (Ops)', notes: 'Sample document – no file attached' },
     { id: 'at3', entityType: 'vehicle', entityId: 'v9', name: 'Forklift load test certificate.pdf', category: 'Certificate', mime: 'application/pdf', size: 220_000, storage: 'none', expiry: d(20), uploadedAt: `${d(-345)}T10:00:00.000Z`, uploadedBy: 'Sam (Workshop)', notes: 'Sample document – no file attached' },
     { id: 'at4', entityType: 'driver', entityId: 'd1', name: 'Maya Thompson – HR licence.jpg', category: 'Licence', mime: 'image/jpeg', size: 420_000, storage: 'none', expiry: drivers[0].licenceExpiry, uploadedAt: `${d(-90)}T10:00:00.000Z`, uploadedBy: 'Alex (Ops)', notes: 'Sample document – no file attached' },
-    { id: 'at5', entityType: 'ncr', entityId: 'n1', name: 'Tyre tread photos.zip', category: 'Photo', mime: 'application/zip', size: 3_400_000, storage: 'none', uploadedAt: `${d(-10)}T11:30:00.000Z`, uploadedBy: 'Priya Nair', notes: 'Sample document – no file attached' },
+    { id: 'at5', entityType: 'ncr', entityId: 'n1', name: 'Tyre tread photos.zip', category: 'Non Conformance', mime: 'application/zip', size: 3_400_000, storage: 'none', uploadedAt: `${d(-10)}T11:30:00.000Z`, uploadedBy: 'Priya Nair', notes: 'Sample document – no file attached' },
     { id: 'at6', entityType: 'part', entityId: 'p9', name: 'RoadGrip supplier certificate.pdf', category: 'Certificate', mime: 'application/pdf', size: 150_000, storage: 'none', expiry: d(-6), uploadedAt: `${d(-371)}T10:00:00.000Z`, uploadedBy: 'Sam (Workshop)', notes: 'Sample document – no file attached' },
   ];
 
@@ -233,22 +245,25 @@ export function createSeed(): AppData {
   const activity: ActivityEvent[] = [
     ev('workOrder', 'w1', -1, 'Sam (Workshop)', 'status', 'Status changed: Open → In progress'),
     ev('workOrder', 'w1', -4, 'System', 'created', 'Work order created from defect “Brakes”'),
-    ev('ncr', 'n1', -2, 'Maya Thompson', 'status', 'Status changed: Investigating → Action'),
-    ev('ncr', 'n1', -6, 'Maya Thompson', 'status', 'Status changed: Open → Investigating'),
-    ev('ncr', 'n1', -10, 'Priya Nair', 'created', 'NCR raised from audit AUD-11'),
+    ev('ncr', 'n1', -6, 'Maya Thompson', 'updated', 'Updated cause, cause date, cause by'),
+    ev('ncr', 'n1', -10, 'Maya Thompson', 'updated', 'Updated short term fix, short term date, short term fix by'),
+    ev('ncr', 'n1', -10, 'Priya Nair', 'created', 'Non conformance created from audit AUD-11'),
     ev('vehicle', 'v2', -4, 'Sam (Workshop)', 'status', 'Status changed: Active → In workshop'),
     ev('vehicle', 'v8', -10, 'Priya Nair', 'status', 'Status changed: Active → Off road'),
     ev('audit', 'a1', -10, 'Priya Nair', 'status', 'Status changed: In progress → Completed'),
   ];
 
   return {
-    vehicles, schedules, workOrders, defects, checks, parts, drivers, fuel, ncrs, audits, attachments, reminders, notes, activity,
+    vehicles, schedules, workOrders, defects, checks, parts, drivers, fuel, ncrs, contractors, audits, attachments, reminders, notes, activity,
     settings: {
       companyName: 'Northwind Logistics',
       currency: 'USD',
       labourRate: 120,
       checklist: DEFAULT_CHECKLIST,
       depots: ['North Yard', 'South Depot', 'City Hub'],
+      ncrSchemes: DEFAULT_NCR_SCHEMES,
+      ncrCategories: DEFAULT_NCR_CATEGORIES,
+      ncrTypes: DEFAULT_NCR_TYPES,
     },
   };
 }

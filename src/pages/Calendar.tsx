@@ -48,7 +48,11 @@ export default function Calendar() {
       if (a.status !== 'completed') out.push({ id: `au-${a.id}`, date: a.date, kind: 'audit', label: `AUD-${a.number} ${a.title}`, to: `/audits/${a.id}` });
     }
     for (const n of data.ncrs) {
-      if (n.status !== 'closed') out.push({ id: `nc-${n.id}`, date: n.dueDate, kind: 'ncr', label: `NCR-${n.number} ${n.title}`, to: `/ncr/${n.id}` });
+      if (n.closed) continue;
+      // Planned stage dates (e.g. a long term fix booked for next month) land on the calendar.
+      for (const [date, what] of [[n.reportedDate, 'reported'], [n.shortTermDate, 'short term fix'], [n.causeDate, 'cause'], [n.longTermDate, 'long term fix']] as const) {
+        if (date) out.push({ id: `nc-${n.id}-${what}`, date, kind: 'ncr', label: `NCR-${n.number} ${what}`, to: `/ncr/${n.id}` });
+      }
     }
     return out.filter((e) => kinds[e.kind]);
   }, [data, kinds]);

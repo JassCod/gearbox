@@ -1,4 +1,5 @@
-import type { AppData, CollectionKey, EntityType } from '../types';
+import type { AppData, CollectionKey, EntityType, Ncr } from '../types';
+import { fmtDMY, ncrSummary } from './ncr';
 import { humanize } from './utils';
 
 type AnyItem = { id: string } & Record<string, unknown>;
@@ -33,7 +34,7 @@ export const ENTITIES: Record<EntityType, EntityMeta> = {
   fuel: { type: 'fuel', collection: 'fuel', singular: 'Fuel fill', plural: 'Fuel log', route: '/fuel',
     title: (f, data) => `Fuel fill – ${vehicleName(data, f.vehicleId)}` },
   ncr: { type: 'ncr', collection: 'ncrs', singular: 'NCR', plural: 'NCRs', route: '/ncr',
-    title: (n) => `NCR-${n.number} ${n.title}` },
+    title: (n) => `NCR-${n.number} ${ncrSummary(n as unknown as Ncr, 50)}` },
   audit: { type: 'audit', collection: 'audits', singular: 'Audit', plural: 'Audits', route: '/audits',
     title: (a) => `AUD-${a.number} ${a.title}` },
 };
@@ -62,14 +63,19 @@ const FIELD_LABELS: Record<string, string> = {
   vehicleId: 'vehicle', dueDate: 'due date', labourHours: 'labour hours', labourRate: 'labour rate', minQty: 'minimum stock',
   qty: 'stock', unitCost: 'unit cost', licenceExpiry: 'licence expiry', medicalExpiry: 'medical expiry', lastDoneDate: 'last done date',
   lastDoneKm: 'last done km', intervalKm: 'km interval', intervalDays: 'day interval', intervalHours: 'hour interval',
-  rootCause: 'root cause', whys: '5 whys', actions: 'corrective actions', verificationResult: 'verification result',
-  containment: 'containment', items: 'checklist', tasks: 'tasks', parts: 'parts',
+  schemeType: 'scheme', ncrType: 'type', employeeId: 'employee', contractorId: 'contractor', pageNumber: 'page number',
+  fitForDutyId: 'fit for duty', defectId: 'event (defect)', auditId: 'event (audit)', workOrderId: 'event (work order)',
+  problem: 'problem', shortTerm: 'short term fix', cause: 'cause', longTerm: 'long term fix', reportedDate: 'reported date',
+  reportedBy: 'reported by', shortTermDate: 'short term date', shortTermBy: 'short term fix by', causeDate: 'cause date',
+  causeBy: 'cause by', longTermDate: 'long term date', longTermBy: 'long term fix by', closedDate: 'closed date',
+  closedBy: 'closed by', closedPosition: 'closed position', closed: 'completed', items: 'checklist', tasks: 'tasks', parts: 'parts',
 };
 
 const fmtValue = (v: unknown) => {
   if (v === undefined || v === null || v === '') return '—';
   if (typeof v === 'number') return v.toLocaleString();
   if (typeof v === 'boolean') return v ? 'yes' : 'no';
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return fmtDMY(v);
   if (typeof v === 'string') return v.length > 40 ? `${v.slice(0, 40)}…` : humanize(v);
   return '';
 };
@@ -80,14 +86,15 @@ export function describeChanges(before: AnyItem, after: AnyItem): { status?: str
   const parts: string[] = [];
   let status: string | undefined;
   for (const k of keys) {
-    if (k === 'id' || k === 'completedAt' || k === 'closedAt' || k === 'doneAt') continue;
+    if (k === 'id' || k === 'completedAt' || k === 'closedAt' || k === 'doneAt' || k === 'createdAt' || k === 'createdBy') continue;
     const a = before[k];
     const b = after[k];
     if (JSON.stringify(a) === JSON.stringify(b)) continue;
     if (k === 'status') { status = `Status changed: ${fmtValue(a)} → ${fmtValue(b)}`; continue; }
     const label = FIELD_LABELS[k] ?? humanize(k.replace(/([A-Z])/g, ' $1').toLowerCase());
     const simple = typeof a !== 'object' && typeof b !== 'object';
-    parts.push(simple && k !== 'description' && k !== 'notes' ? `${label} ${fmtValue(a)} → ${fmtValue(b)}` : label);
+    const long = ['description', 'notes', 'problem', 'shortTerm', 'cause', 'longTerm'].includes(k);
+    parts.push(simple && !long ? `${label} ${fmtValue(a)} → ${fmtValue(b)}` : label);
   }
   if (!status && !parts.length) return null;
   const text = [status, parts.length ? `Updated ${parts.slice(0, 4).join(', ')}${parts.length > 4 ? ` +${parts.length - 4} more` : ''}` : '']

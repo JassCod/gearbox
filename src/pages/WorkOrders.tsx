@@ -305,7 +305,7 @@ export function WorkOrderDetail() {
                     {v && <li><span>Vehicle</span><Link className="link" to={`/vehicles/${v.id}`}>{v.rego} · {v.name}</Link></li>}
                     {defect && <li><span>Defect</span><Link className="link" to={`/defects/${defect.id}`}>{defect.item} ({defect.severity})</Link></li>}
                     {schedule && <li><span>Service schedule</span><Link className="link" to={`/maintenance/${schedule.id}`}>{schedule.name}</Link></li>}
-                    {ncrs.map((n) => <li key={n.id}><span>NCR</span><Link className="link" to={`/ncr/${n.id}`}>NCR-{n.number} {n.title}</Link></li>)}
+                    {ncrs.map((n) => <li key={n.id}><span>NCR</span><Link className="link" to={`/ncr/${n.id}`}>NCR-{n.number} {n.ncrType}</Link></li>)}
                     {!defect && !schedule && !ncrs.length && <li className="muted">No defect, schedule or NCR linked.</li>}
                   </ul>
                   {canEdit && <Link className="btn btn-sm" to={`/ncr/new?workOrder=${w.id}&vehicle=${w.vehicleId}`}><TriangleAlert size={14} /> Raise NCR from this job</Link>}

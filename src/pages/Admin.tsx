@@ -25,7 +25,7 @@ interface AuditRow {
 const COLLECTION_LABELS: Record<CollectionKey, string> = {
   vehicles: 'Vehicles', schedules: 'Service schedules', workOrders: 'Work orders', defects: 'Defects',
   checks: 'Pre-start checks', parts: 'Parts', drivers: 'Drivers', fuel: 'Fuel log',
-  ncrs: 'NCRs', audits: 'Audits', attachments: 'Documents', reminders: 'Reminders', notes: 'Notes', activity: 'Item history',
+  ncrs: 'NCRs', contractors: 'Contractors', audits: 'Audits', attachments: 'Documents', reminders: 'Reminders', notes: 'Notes', activity: 'Item history',
 };
 
 const fmtDateTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—');

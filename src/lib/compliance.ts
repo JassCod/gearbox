@@ -1,49 +1,7 @@
-import type { AppData, Audit, AuditItem, Ncr, NcrStatus } from '../types';
+import type { AppData, Audit, AuditItem } from '../types';
 import { daysUntil, relDays, serviceDue, uid } from './utils';
 import { ENTITIES, entityLink } from './entities';
-
-// ---------- NCR lifecycle ----------
-
-export const NCR_STAGES: { status: NcrStatus; label: string; hint: string }[] = [
-  { status: 'open', label: 'Raised', hint: 'Describe the problem and contain it' },
-  { status: 'investigating', label: 'Investigation', hint: 'Find the root cause (5 whys)' },
-  { status: 'action', label: 'Corrective action', hint: 'Fix it and stop it happening again' },
-  { status: 'verification', label: 'Verification', hint: 'Check the fix actually worked' },
-  { status: 'closed', label: 'Closed', hint: 'Effective and signed off' },
-];
-
-export const stageIndex = (s: NcrStatus) => NCR_STAGES.findIndex((x) => x.status === s);
-
-/** What still has to happen before an NCR can move to the next stage. */
-export function ncrBlockers(n: Ncr): string[] {
-  const out: string[] = [];
-  switch (n.status) {
-    case 'open':
-      if (!n.description.trim()) out.push('Describe the non-conformance');
-      if (!n.containment.trim()) out.push('Record the immediate containment action');
-      break;
-    case 'investigating':
-      if (n.whys.filter((w) => w.trim()).length < 3) out.push('Answer at least three of the 5 whys');
-      if (!n.rootCause.trim()) out.push('State the root cause');
-      break;
-    case 'action':
-      if (!n.actions.length) out.push('Add at least one corrective or preventive action');
-      if (n.actions.some((a) => !a.done)) out.push('Complete every action');
-      break;
-    case 'verification':
-      if (!n.verificationResult.trim()) out.push('Record the verification result');
-      if (n.effective !== true) out.push('Confirm the actions were effective');
-      break;
-  }
-  return out;
-}
-
-export const riskScore = (n: Pick<Ncr, 'likelihood' | 'impact'>) => n.likelihood * n.impact;
-export const riskLevel = (score: number) => (score >= 15 ? 'extreme' : score >= 10 ? 'high' : score >= 5 ? 'medium' : 'low');
-
-export const NCR_CATEGORIES = ['Vehicle safety', 'Maintenance', 'Documentation', 'Driver behaviour', 'Load restraint', 'Environmental', 'Supplier', 'Process'] as const;
-export const NCR_SOURCES = ['Defect', 'Audit', 'Inspection', 'Customer complaint', 'Incident', 'Internal'] as const;
-export const ROOT_CAUSE_CATEGORIES = ['People', 'Process', 'Equipment', 'Materials', 'Environment', 'Management'] as const;
+import { ncrAge } from './ncr';
 
 // ---------- Audit templates ----------
 
@@ -157,9 +115,9 @@ export function complianceScore(data: AppData): ComplianceScore {
   const reg = complianceRegister(data);
   const expired = reg.filter((r) => r.state === 'expired').length;
   const expiring = reg.filter((r) => r.state === 'expiring').length;
-  const openNcrs = data.ncrs.filter((n) => n.status !== 'closed');
-  const overdueNcrs = openNcrs.filter((n) => daysUntil(n.dueDate) < 0);
-  const criticalNcrs = openNcrs.filter((n) => n.severity === 'critical');
+  const openNcrs = data.ncrs.filter((n) => !n.closed);
+  const staleNcrs = openNcrs.filter((n) => ncrAge(n) > 30);
+  const unfixedNcrs = openNcrs.filter((n) => !n.shortTerm.trim() && ncrAge(n) > 2);
   const overdueServices = data.schedules.filter((s) => serviceDue(s, data.vehicles.find((v) => v.id === s.vehicleId)).state === 'overdue').length;
   const criticalDefects = data.defects.filter((d) => d.status !== 'resolved' && d.severity === 'critical').length;
   const recentAudits = data.audits.filter((a) => a.status === 'completed' && daysUntil(a.date) > -90);
@@ -171,8 +129,8 @@ export function complianceScore(data: AppData): ComplianceScore {
   };
   add(expired, 6, 30, 'Expired documents', `${expired} registration, insurance, licence or training record${expired > 1 ? 's' : ''} expired`, '/compliance');
   add(expiring, 1, 8, 'Expiring soon', `${expiring} item${expiring > 1 ? 's' : ''} expire within 30 days`, '/compliance');
-  add(criticalNcrs.length, 8, 24, 'Critical NCRs open', `${criticalNcrs.length} critical non-conformance${criticalNcrs.length > 1 ? 's' : ''} still open`, '/ncr');
-  add(overdueNcrs.length, 4, 16, 'NCRs past due', `${overdueNcrs.length} NCR${overdueNcrs.length > 1 ? 's' : ''} past their due date`, '/ncr');
+  add(unfixedNcrs.length, 5, 20, 'NCRs without a remedial action', `${unfixedNcrs.length} open NCR${unfixedNcrs.length > 1 ? 's have' : ' has'} no short term fix recorded after 2 days`, '/ncr');
+  add(staleNcrs.length, 3, 15, 'NCRs open over 30 days', `${staleNcrs.length} NCR${staleNcrs.length > 1 ? 's' : ''} open for more than 30 days`, '/ncr');
   add(overdueServices, 3, 15, 'Services overdue', `${overdueServices} scheduled service${overdueServices > 1 ? 's' : ''} overdue`, '/maintenance');
   add(criticalDefects, 5, 15, 'Critical defects', `${criticalDefects} critical defect${criticalDefects > 1 ? 's' : ''} unresolved`, '/defects');
   if (avgAudit !== null && avgAudit < 90) {

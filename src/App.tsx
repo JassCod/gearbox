@@ -13,7 +13,10 @@ import Defects, { DefectDetail, NewDefect } from './pages/Defects';
 import Parts, { NewPart, PartDetail } from './pages/Parts';
 import Drivers, { DriverDetail, NewDriver } from './pages/Drivers';
 import FuelLog from './pages/FuelLog';
-import Ncrs, { NcrDetail, NewNcr } from './pages/Ncrs';
+import Ncrs, { NcrReports } from './pages/Ncrs';
+import NcrForm from './pages/NcrForm';
+import NcrReport from './pages/NcrReport';
+import Contractors from './pages/Contractors';
 import Audits, { AuditDetail, NewAudit } from './pages/Audits';
 import Compliance from './pages/Compliance';
 import Reminders from './pages/Reminders';
@@ -95,8 +98,12 @@ function Workspace() {
         <Route path="/fuel" element={<FuelLog />} />
         <Route path="/compliance" element={<Compliance />} />
         <Route path="/ncr" element={<Ncrs />} />
-        <Route path="/ncr/new" element={<NewNcr />} />
-        <Route path="/ncr/:id" element={<NcrDetail />} />
+        <Route path="/ncr/closed" element={<Ncrs closed />} />
+        <Route path="/ncr/reports" element={<NcrReports />} />
+        <Route path="/ncr/new" element={<NcrForm key="new" />} />
+        <Route path="/ncr/:id" element={<NcrForm />} />
+        <Route path="/ncr/:id/report" element={<NcrReport />} />
+        <Route path="/contractors" element={<Contractors />} />
         <Route path="/audits" element={<Audits />} />
         <Route path="/audits/new" element={<NewAudit />} />
         <Route path="/audits/:id" element={<AuditDetail />} />

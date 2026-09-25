@@ -15,7 +15,7 @@ import {
 } from '../lib/utils';
 import { fuelEfficiency } from './FuelLog';
 import { VehicleFields } from './Vehicles';
-import { riskLevel, riskScore } from '../lib/compliance';
+import { ncrSummary } from '../lib/ncr';
 
 const tooltipStyle = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8 };
 
@@ -126,7 +126,7 @@ export default function VehicleDetail() {
                     <li><span>Registration</span><span className={`tone-text-${docExpiry(v.regoExpiry)}`}>{fmtDate(v.regoExpiry)} · {relDays(v.regoExpiry)}</span></li>
                     <li><span>Insurance</span><span className={`tone-text-${docExpiry(v.insuranceExpiry)}`}>{fmtDate(v.insuranceExpiry)} · {relDays(v.insuranceExpiry)}</span></li>
                     <li><span>Last pre-start</span><span>{checks[0] ? `${fmtDate(checks[0].date)} · ${checks[0].passed ? 'passed' : 'failed'}` : 'Never'}</span></li>
-                    <li><span>Open NCRs</span><span className={ncrs.some((n) => n.status !== 'closed') ? 'tone-text-warn' : 'tone-text-good'}>{ncrs.filter((n) => n.status !== 'closed').length}</span></li>
+                    <li><span>Open NCRs</span><span className={ncrs.some((n) => !n.closed) ? 'tone-text-warn' : 'tone-text-good'}>{ncrs.filter((n) => !n.closed).length}</span></li>
                   </ul>
                 </Card>
                 <Card title="Assigned driver">
@@ -266,13 +266,13 @@ export default function VehicleDetail() {
           ),
         },
         {
-          id: 'compliance', label: 'Compliance', icon: <ShieldCheck size={15} />, count: ncrs.filter((n) => n.status !== 'closed').length, render: () => (
+          id: 'compliance', label: 'Compliance', icon: <ShieldCheck size={15} />, count: ncrs.filter((n) => !n.closed).length, render: () => (
             <div className="grid-2">
               <Card title="Non-conformance reports" actions={perm.canWrite('ncrs') && <Link className="btn btn-sm" to={`/ncr/new?vehicle=${v.id}`}><TriangleAlert size={14} /> Raise NCR</Link>}>
                 <ul className="list">
                   {ncrs.map((n) => (
-                    <li key={n.id}><div><Link className="strong" to={`/ncr/${n.id}`}>NCR-{n.number} {n.title}</Link><div className="small muted">{n.category} · raised {fmtDate(n.raisedAt)}</div></div>
-                      <div className="row gap-sm"><span className={`risk-chip risk-${riskLevel(riskScore(n))}`}>{riskScore(n)}</span><Badge value={n.status} /></div></li>
+                    <li key={n.id}><div><Link className="strong" to={`/ncr/${n.id}`}>NCR-{n.number} {n.ncrType}</Link><div className="small muted">{n.schemeType} · reported {fmtDate(n.reportedDate || n.createdAt)} · {ncrSummary(n, 40)}</div></div>
+                      <Badge value={n.closed ? 'closed' : 'open'} /></li>
                   ))}
                   {ncrs.length === 0 && <li className="muted">No NCRs linked to this asset.</li>}
                 </ul>

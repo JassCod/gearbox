@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type {
-  ActivityEvent, AppData, Attachment, CollectionKey, Defect, EntityType, Ncr, Note, PrestartCheck, Reminder, Settings, WorkOrder,
+  ActivityEvent, AppData, Attachment, CollectionKey, Defect, EntityType, Note, PrestartCheck, Reminder, Settings, WorkOrder,
 } from './types';
 import { createSeed } from './data/seed';
 import { addDays, todayISO, uid } from './lib/utils';
@@ -8,6 +8,7 @@ import { supabase } from './lib/supabase';
 import { useAuth } from './auth';
 import { applyRemote, COLLECTIONS, diff, emptyData, isEmptyDiff, loadAll, pushDiff, stableStringify } from './lib/cloudSync';
 import { describeChanges, ENTITY_BY_COLLECTION } from './lib/entities';
+import { migrateNcr } from './lib/ncr';
 
 const STORAGE_KEY = 'torqline:data:v1';
 /** Files larger than this can't be kept in the browser's local storage. */
@@ -32,7 +33,6 @@ interface Store {
   addAttachment(entityType: EntityType, entityId: string, file: File, meta: { category: string; expiry?: string; notes?: string }): Promise<Attachment>;
   removeAttachment(att: Attachment): Promise<void>;
   attachmentUrl(att: Attachment): Promise<string | null>;
-  raiseNcr(input: Partial<Ncr> & Pick<Ncr, 'title'>): Ncr;
   actor: string;
   replaceAll(data: AppData): void;
   resetDemo(): void;
@@ -56,6 +56,8 @@ export function normalize(input: Partial<AppData>): AppData {
   const out = { ...emptyData(base.settings), ...input } as AppData;
   for (const c of COLLECTIONS) if (!Array.isArray(out[c])) (out[c] as unknown[]) = [];
   out.settings = { ...base.settings, ...(input.settings ?? {}) };
+  // NCRs saved by the earlier screens are converted to the current format.
+  if (out.ncrs.some((n) => typeof (n as { problem?: unknown }).problem !== 'string')) out.ncrs = out.ncrs.map(migrateNcr);
   return out;
 }
 
@@ -360,7 +362,7 @@ export function StoreProvider({ children, cloud = false }: { children: ReactNode
   }, []);
 
   const nextNumber = useCallback((key: 'workOrders' | 'ncrs' | 'audits') => {
-    const start = key === 'workOrders' ? 1000 : key === 'ncrs' ? 100 : 10;
+    const start = key === 'workOrders' ? 1000 : key === 'ncrs' ? 1000 : 10;
     return (data[key] as { number: number }[]).reduce((m, x) => Math.max(m, x.number), start) + 1;
   }, [data]);
 
@@ -433,17 +435,6 @@ export function StoreProvider({ children, cloud = false }: { children: ReactNode
     return null;
   }, []);
 
-  const raiseNcr = useCallback((input: Partial<Ncr> & Pick<Ncr, 'title'>) => {
-    const ncr: Ncr = {
-      id: uid(), number: nextNumber('ncrs'), description: '', category: 'Vehicle safety', source: 'Internal', severity: 'major',
-      likelihood: 3, impact: 3, status: 'open', raisedBy: actorRef.current, raisedAt: todayISO(), dueDate: addDays(todayISO(), 14),
-      owner: '', containment: '', whys: ['', '', '', '', ''], rootCause: '', actions: [], verificationMethod: '', verificationResult: '',
-      ...input,
-    };
-    setData((prev) => ({ ...prev, ncrs: [ncr, ...prev.ncrs] }));
-    return ncr;
-  }, [nextNumber, setData]);
-
   // Bulk replacements skip the history logger – they aren't edits to individual items.
   const replaceAll = useCallback((next: AppData) => setRawData(normalize(next)), []);
   const resetDemo = useCallback(() => setRawData(createSeed()), []);
@@ -455,10 +446,10 @@ export function StoreProvider({ children, cloud = false }: { children: ReactNode
 
   const value = useMemo<Store>(() => ({
     data, upsert, remove, updateSettings, submitCheck, createWorkOrderFromDefect, setWorkOrderStatus, nextNumber,
-    nextWorkOrderNumber, addNote, saveReminder, completeReminder, addAttachment, removeAttachment, attachmentUrl, raiseNcr,
+    nextWorkOrderNumber, addNote, saveReminder, completeReminder, addAttachment, removeAttachment, attachmentUrl,
     actor, replaceAll, resetDemo, clearAll, sync, reload,
   }), [data, upsert, remove, updateSettings, submitCheck, createWorkOrderFromDefect, setWorkOrderStatus, nextNumber,
-    nextWorkOrderNumber, addNote, saveReminder, completeReminder, addAttachment, removeAttachment, attachmentUrl, raiseNcr,
+    nextWorkOrderNumber, addNote, saveReminder, completeReminder, addAttachment, removeAttachment, attachmentUrl,
     actor, replaceAll, resetDemo, clearAll, sync, reload]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

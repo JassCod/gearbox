@@ -28,8 +28,9 @@ Torqline is a web app for running a vehicle and equipment fleet. It supports **t
 
 | Area | What you can do |
 | --- | --- |
-| **Compliance hub** | An animated 0–100 score (grade A–D) that lists exactly what is costing points; a register of everything that expires; a driver compliance grid; a risk heat map; upcoming audits |
-| **NCRs** | Non-conformance reports with the full lifecycle: Raised → Investigation (containment, **5 whys**, fishbone category, root cause) → Corrective & preventive actions → Verification (effective / not effective) → Closed. Each has a likelihood × impact risk rating, and the register exports to CSV. NCRs can be raised from a defect, an audit finding or a work order |
+| **Compliance hub** | An animated 0–100 score (grade A–D) that lists exactly what is costing points; a register of everything that expires; a driver compliance grid; open NCRs by scheme and type; upcoming audits |
+| **Non Conformances** | Open and Closed registers with Groups (depot) / SubGroups (vehicle type) filters saved per user, Add New / Open / Closed / Reports tiles, and a searchable, sortable, paginated table with Copy, CSV and Print. Each NCR opens as a full-screen form: Scheme, Category and Type (admin-editable lists in Settings), Employee, Contractor, Page Number and Vehicle/Asset; *More Information* links a fit-for-duty (pre-start) check and a related event (defect, audit or work order). The Details tab has the four stages (Problem, Short term fix, Cause, Long term fix), each with a date (DD/MM/YYYY) and a person, plus a closing strip (closed date, by, position, **Completed**). The Documents tab takes multi-file uploads and drag and drop, and tags every file "Non Conformance". *Show History* lists locked system entries and notes you can star onto the dashboard. Reports: Open and Closed registers as **PDF or XLSX**, and a printable single-NCR report with PDF download. NCRs can still be raised from a defect, an audit finding or a work order |
+| **Contractors** | A register of outside operators (ABN, contact, phone, email, active/inactive). Pick them on NCRs, or add one straight from the NCR form |
 | **Audits** | Four templates (vehicle roadworthiness, depot safety walk, driver compliance review, maintenance records). Audits are scored pass/fail/N-A with notes, and **failed items raise NCRs in one click** |
 
 **Across the app**

@@ -1,4 +1,5 @@
 import type { AppData } from '../types';
+import { ncrAge, ncrSummary } from './ncr';
 import { daysUntil, relDays, serviceDue } from './utils';
 import { ENTITIES, entityLink, entityTitle } from './entities';
 
@@ -72,12 +73,13 @@ export function buildAlerts(data: AppData): Alert[] {
     });
   }
   for (const n of data.ncrs) {
-    if (n.status === 'closed') continue;
-    const days = daysUntil(n.dueDate);
-    if (days < 0 || n.severity === 'critical') out.push({
-      id: `ncr-${n.id}`, level: days < 0 || n.severity === 'critical' ? 'bad' : 'warn', kind: 'NCR',
-      text: `NCR-${n.number} ${n.title} – ${days < 0 ? `past due ${relDays(n.dueDate)}` : `${n.severity}, due ${relDays(n.dueDate)}`}`, to: `/ncr/${n.id}`,
+    if (n.closed) continue;
+    const age = ncrAge(n);
+    if (!n.shortTerm.trim() && age > 2) out.push({
+      id: `ncr-${n.id}`, level: age > 7 ? 'bad' : 'warn', kind: 'NCR',
+      text: `NCR-${n.number} ${n.ncrType || ncrSummary(n, 40)} – no short term fix recorded after ${age} days`, to: `/ncr/${n.id}`,
     });
+    else if (age > 30) out.push({ id: `ncr-${n.id}`, level: 'warn', kind: 'NCR', text: `NCR-${n.number} ${n.ncrType || ncrSummary(n, 40)} – open for ${age} days`, to: `/ncr/${n.id}` });
   }
   for (const a of data.audits) {
     if (a.status === 'completed') continue;

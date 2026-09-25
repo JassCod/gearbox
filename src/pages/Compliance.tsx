@@ -4,7 +4,6 @@ import { CalendarCheck, Download, FileWarning, ShieldCheck, Clock, TriangleAlert
 import { useStore } from '../store';
 import { usePermissions } from '../auth';
 import { Badge, Card, PageHeader, Select, StatCard } from '../components/ui';
-import { RiskMatrix } from './Ncrs';
 import { auditScore, complianceRegister, complianceScore, describeDue } from '../lib/compliance';
 import { daysUntil, downloadCSV, fmtDate, relDays } from '../lib/utils';
 
@@ -48,9 +47,11 @@ export default function Compliance() {
   const [filter, setFilter] = useState<'attention' | 'all' | 'expired' | 'expiring'>('attention');
   const [kind, setKind] = useState('all');
   const rows = register.filter((r) => (filter === 'all' || (filter === 'attention' ? r.state !== 'ok' : r.state === filter)) && (kind === 'all' || r.kind === kind));
-  const openNcrs = data.ncrs.filter((n) => n.status !== 'closed');
+  const openNcrs = data.ncrs.filter((n) => !n.closed);
   const upcomingAudits = data.audits.filter((a) => a.status !== 'completed').sort((a, b) => a.date.localeCompare(b.date));
-  const byCategory = Object.entries(openNcrs.reduce<Record<string, number>>((m, n) => ({ ...m, [n.category]: (m[n.category] ?? 0) + 1 }), {})).sort((a, b) => b[1] - a[1]);
+  const tally = (key: (n: (typeof openNcrs)[number]) => string) => Object.entries(openNcrs.reduce<Record<string, number>>((m, n) => { const k = key(n) || 'Not set'; return { ...m, [k]: (m[k] ?? 0) + 1 }; }, {})).sort((a, b) => b[1] - a[1]);
+  const byScheme = tally((n) => n.schemeType);
+  const byCategory = tally((n) => n.ncrType).slice(0, 8);
   const docKinds = ['Licence', 'Medical', ...new Set(data.drivers.flatMap((d) => d.trainings.map((t) => t.name)))].slice(0, 7);
 
   return (
@@ -84,10 +85,13 @@ export default function Compliance() {
 
       <div className="grid-side-left">
         <div className="stack">
-          <Card title="Risk heat map" actions={<Link className="link small" to="/ncr">NCR register</Link>}>
-            <RiskMatrix ncrs={openNcrs} />
+          <Card title="Open NCRs by scheme" actions={<Link className="link small" to="/ncr">Non conformances</Link>}>
+            <ul className="bar-list">
+              {byScheme.map(([c, n]) => <li key={c}><span>{c}</span><div className="bar-track"><div className="bar-fill" style={{ width: `${(n / byScheme[0][1]) * 100}%` }} /></div><b>{n}</b></li>)}
+              {byScheme.length === 0 && <li className="muted">No open NCRs.</li>}
+            </ul>
           </Card>
-          <Card title="Open NCRs by category">
+          <Card title="Open NCRs by type">
             <ul className="bar-list">
               {byCategory.map(([c, n]) => <li key={c}><span>{c}</span><div className="bar-track"><div className="bar-fill" style={{ width: `${(n / byCategory[0][1]) * 100}%` }} /></div><b>{n}</b></li>)}
               {byCategory.length === 0 && <li className="muted">No open NCRs.</li>}

@@ -3,13 +3,14 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Bell, BellRing, CalendarDays, ClipboardCheck, Fuel, Gauge, LayoutDashboard, Menu, Moon, Package, Search,
   Settings as SettingsIcon, Sun, TriangleAlert, Truck, Users, Wrench, BarChart3, CalendarClock,
-  ShieldCheck, LogOut, Cloud, CloudOff, HardDrive, Loader2, FileWarning, FileSearch, BadgeCheck, CornerDownLeft, Plus, Command,
+  ShieldCheck, LogOut, Building2, Cloud, CloudOff, HardDrive, Loader2, FileWarning, FileSearch, BadgeCheck, CornerDownLeft, Plus, Command,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { useAuth, usePermissions } from '../auth';
 import { buildAlerts } from '../lib/alerts';
 import { ROLES } from '../lib/permissions';
 import { complianceScore } from '../lib/compliance';
+import { ncrSummary } from '../lib/ncr';
 
 type NavItem = { to: string; label: string; icon: typeof Truck; end?: boolean; adminOnly?: boolean; count?: (d: ReturnType<typeof useStore>['data']) => number; bad?: boolean };
 
@@ -30,7 +31,8 @@ const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: 'Compliance', items: [
       { to: '/compliance', label: 'Compliance hub', icon: BadgeCheck },
-      { to: '/ncr', label: 'NCRs', icon: FileWarning, count: (d) => d.ncrs.filter((n) => n.status !== 'closed').length },
+      { to: '/ncr', label: 'Non Conformances', icon: FileWarning, count: (d) => d.ncrs.filter((n) => !n.closed).length },
+      { to: '/contractors', label: 'Contractors', icon: Building2 },
       { to: '/audits', label: 'Audits', icon: FileSearch, count: (d) => d.audits.filter((a) => a.status !== 'completed').length },
     ],
   },
@@ -90,6 +92,10 @@ export function Layout({ children }: { children: ReactNode }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // The NCR form and its printable report are full-screen pages without the sidebar.
+  const fullScreen = /^\/ncr\/(?!closed$|reports$)[^/]+(\/report)?$/.test(location.pathname);
+  if (fullScreen) return <div className="fs-root">{children}</div>;
 
   return (
     <div className={`shell ${navOpen ? 'nav-open' : ''}`}>
@@ -180,7 +186,7 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
     const records: PaletteItem[] = s.length < 2 ? [] : [
       ...data.vehicles.filter((v) => hit(v.rego, v.name, v.make, v.model, v.vin)).map((v) => ({ key: v.id, group: 'Vehicles', label: `${v.rego} · ${v.name}`, hint: `${v.make} ${v.model}`, to: `/vehicles/${v.id}`, icon: <Truck size={15} /> })),
       ...data.workOrders.filter((w) => hit(w.number, w.title, w.assignee)).map((w) => ({ key: w.id, group: 'Work orders', label: `#${w.number} ${w.title}`, hint: w.status, to: `/work-orders/${w.id}`, icon: <Wrench size={15} /> })),
-      ...data.ncrs.filter((n) => hit(`ncr-${n.number}`, n.number, n.title)).map((n) => ({ key: n.id, group: 'NCRs', label: `NCR-${n.number} ${n.title}`, hint: n.status, to: `/ncr/${n.id}`, icon: <FileWarning size={15} /> })),
+      ...data.ncrs.filter((n) => hit(`ncr-${n.number}`, n.number, n.problem, n.ncrType, n.schemeType)).map((n) => ({ key: n.id, group: 'NCRs', label: `NCR-${n.number} ${ncrSummary(n, 60)}`, hint: n.closed ? 'closed' : 'open', to: `/ncr/${n.id}`, icon: <FileWarning size={15} /> })),
       ...data.audits.filter((a) => hit(`aud-${a.number}`, a.title, a.type)).map((a) => ({ key: a.id, group: 'Audits', label: `AUD-${a.number} ${a.title}`, hint: a.status, to: `/audits/${a.id}`, icon: <FileSearch size={15} /> })),
       ...data.drivers.filter((d) => hit(d.name, d.email, d.phone)).map((d) => ({ key: d.id, group: 'Drivers', label: d.name, hint: d.depot, to: `/drivers/${d.id}`, icon: <Users size={15} /> })),
       ...data.parts.filter((p) => hit(p.sku, p.name, p.supplier)).map((p) => ({ key: p.id, group: 'Parts', label: p.name, hint: `${p.sku} · ${p.qty} in stock`, to: `/parts/${p.id}`, icon: <Package size={15} /> })),
@@ -237,7 +243,7 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, onOut: () => 
   }, [ref, onOut]);
 }
 
-function AlertsBell() {
+export function AlertsBell() {
   const { data } = useStore();
   const alerts = useMemo(() => buildAlerts(data), [data]);
   const [open, setOpen] = useState(false);

@@ -66,7 +66,7 @@ export function guessCategory(file: File): string {
   return 'Other';
 }
 
-function useUploadQueue(entity: { type: EntityType; id: string }) {
+export function useUploadQueue(entity: { type: EntityType; id: string }) {
   const { addAttachment } = useStore();
   const [jobs, setJobs] = useState<UploadJob[]>([]);
   const upload = useCallback(async (files: FileList | File[], meta: UploadMeta) => {
@@ -89,7 +89,7 @@ function useUploadQueue(entity: { type: EntityType; id: string }) {
   return { jobs, upload, clearDone };
 }
 
-const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+export const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
 
 /**
  * Full-page view for one record: a hero header plus tabs. Documents, reminders,
@@ -214,7 +214,7 @@ function fileIcon(mime: string) {
   return <FileText size={22} />;
 }
 
-const fmtSize = (n: number) => (n > 1_000_000 ? `${(n / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1000))} KB`);
+export const fmtSize = (n: number) => (n > 1_000_000 ? `${(n / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1000))} KB`);
 
 export function DocumentsTab({ docs, queue }: { entity: { type: EntityType; id: string }; docs: Attachment[]; queue: ReturnType<typeof useUploadQueue> }) {
   const { removeAttachment, attachmentUrl } = useStore();

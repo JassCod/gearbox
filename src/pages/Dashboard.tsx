@@ -8,7 +8,8 @@ import { Badge, Card, HealthDot, PageHeader, StatCard } from '../components/ui';
 import { VehicleIcon } from '../components/icons';
 import { useEffect, useState } from 'react';
 import { ScoreGauge } from './Compliance';
-import { complianceScore, describeDue, riskLevel, riskScore } from '../lib/compliance';
+import { complianceScore } from '../lib/compliance';
+import { ncrAge, ncrSummary, stagesDone } from '../lib/ncr';
 import { entityLink, entityTitle } from '../lib/entities';
 import { buildAlerts } from '../lib/alerts';
 import { byId, daysUntil, fmtDate, fmtMoney, parseISO, relDays, serviceDue, todayISO, vehicleHealth, workOrderCost } from '../lib/utils';
@@ -61,7 +62,8 @@ export default function Dashboard() {
   }, [data]);
 
   const compliance = useMemo(() => complianceScore(data), [data]);
-  const openNcrs = data.ncrs.filter((n) => n.status !== 'closed').sort((a, b) => riskScore(b) - riskScore(a));
+  const openNcrs = data.ncrs.filter((n) => !n.closed).sort((a, b) => ncrAge(b) - ncrAge(a));
+  const starred = data.notes.filter((x) => x.pinned).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 6);
   const dueReminders = data.reminders.filter((r) => !r.done && daysUntil(r.dueDate) <= 7).sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, 6);
   const urgentCount = alerts.filter((a) => a.level === 'bad').length;
   const pie = (['green', 'amber', 'red'] as const).map((k) => ({ name: k, value: counts[k] })).filter((x) => x.value);
@@ -213,15 +215,26 @@ export default function Dashboard() {
             {dueReminders.length === 0 && <li className="muted">No reminders due this week.</li>}
           </ul>
         </Card>
-        <Card title="Open NCRs" actions={<Link to="/ncr" className="link small">NCR register</Link>}>
+        <Card title="Open NCRs" actions={<Link to="/ncr" className="link small">Non conformances</Link>}>
           <ul className="list">
             {openNcrs.slice(0, 6).map((n) => (
               <li key={n.id}>
-                <div><Link to={`/ncr/${n.id}`} className="strong">NCR-{n.number} {n.title}</Link><div className="small muted">{n.category} · {describeDue(n.dueDate)}</div></div>
-                <div className="row gap-sm"><span className={`risk-chip risk-${riskLevel(riskScore(n))}`}>{riskScore(n)}</span><Badge value={n.status} /></div>
+                <div><Link to={`/ncr/${n.id}`} className="strong">NCR-{n.number} {n.ncrType}</Link><div className="small muted">{n.schemeType || 'No scheme'} · {ncrSummary(n, 48)}</div></div>
+                <div className="row gap-sm"><span className="badge tone-neutral" title="Stages written up">{stagesDone(n)}/4</span><span className={`badge ${ncrAge(n) > 30 ? 'tone-bad' : 'tone-warn'}`}>{ncrAge(n)} d</span></div>
               </li>
             ))}
             {openNcrs.length === 0 && <li className="muted">No open non-conformances. 🎉</li>}
+          </ul>
+        </Card>
+        <Card title="Starred notes" actions={<span className="small muted">Star a note from any record's history</span>}>
+          <ul className="list">
+            {starred.map((x) => (
+              <li key={x.id} className="starred-note">
+                <div><Link to={`${entityLink(x.entityType, x.entityId)}${x.entityType === 'ncr' ? '' : '?tab=notes'}`} className="strong">{entityTitle(data, x.entityType, x.entityId)}</Link>
+                  <div className="small">{x.text}</div><div className="small muted">{x.by} · {new Date(x.at).toLocaleDateString()}</div></div>
+              </li>
+            ))}
+            {starred.length === 0 && <li className="muted">No starred notes yet.</li>}
           </ul>
         </Card>
       </div>
